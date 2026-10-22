@@ -15,8 +15,7 @@ from tkinter import messagebox, ttk
 from ..core.classify import CATEGORY_COLORS, classify
 from ..core.scanner import list_dir_children, scan_dir_size
 from ..utils.fmt import dir_of, fmt_size
-from ..utils.taskrunner import (LANE_FAST, LANE_SCAN,
-                                PRIORITY_LIST, PRIORITY_SCAN)
+from ..utils.taskrunner import LANE_FAST, LANE_SCAN, PRIORITY_LIST, PRIORITY_SCAN
 
 
 class BrowseTab(ttk.Frame):

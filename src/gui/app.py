@@ -6,12 +6,10 @@ import shutil
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from ..core.cleaner import PROTECTED_PATHS, default_skip_paths, delete_tree_contents, unlink_file
-from ..core.cleaner import execute_target
+from ..core.cleaner import PROTECTED_PATHS, default_skip_paths, delete_tree_contents, execute_target, unlink_file
 from ..core.runtime import is_admin, relaunch_as_admin
 from ..utils.fmt import fmt_size
-from ..utils.taskrunner import (LANE_BATCH, LANE_SCAN, PRIORITY_CLEAN,
-                                TaskRunner)
+from ..utils.taskrunner import LANE_BATCH, LANE_SCAN, PRIORITY_CLEAN, TaskRunner
 from ..version import TITLE, VERSION
 from .browse_tab import BrowseTab
 from .suggest_tab import SuggestTab

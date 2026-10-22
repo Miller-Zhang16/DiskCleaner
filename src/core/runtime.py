@@ -2,9 +2,9 @@
 """运行时环境：应用根目录、数据目录，以及管理员权限判定与自我提权。"""
 
 import ctypes
-from ctypes import wintypes
 import os
 import sys
+from ctypes import wintypes
 
 SENTINEL_ELEVATED = "--elevated"
 

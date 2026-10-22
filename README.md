@@ -53,17 +53,32 @@
 ```
 C_improve/
 ├── main.py                     # 程序入口
-├── build.bat                   # 一键构建脚本（PyInstaller 打包 exe）
+├── build.bat                   # 本地一键构建（三种方式可选）
+├── CHANGELOG.md                # 更新日志（随版本递增自动维护）
 ├── requirements.txt            # 打包所需依赖（运行时无依赖）
+├── requirements-dev.txt        # 开发/CI 依赖（ruff）
+├── pyproject.toml              # ruff 代码规范配置
 ├── README.md
 ├── LICENSE
 ├── .gitignore
+├── assets/
+│   └── icon.ico                # 应用图标（窗口 + exe 资源）
+├── launcher/                   # 原生 C 启动器源码
+│   ├── launcher.c              # 拉起 python-embed\pythonw.exe
+│   └── launcher.rc             # 图标与版本信息资源
+├── scripts/
+│   ├── build_portable.py       # 便携包构建（本地与 CI 共用同一入口）
+│   ├── check_version.py        # 版本号 / CHANGELOG / tag 一致性校验
+│   └── release.py              # 版本递增 + CHANGELOG + 打 tag
+├── .github/workflows/
+│   ├── ci.yml                  # 提交检查：ruff / 编译 / 导入 / 版本一致性
+│   └── release.yml             # 打 tag 自动构建并发布 Release
 ├── data/
 │   ├── settings.ini            # 配置文件（可用记事本编辑）
 │   ├── custom_targets.txt      # 自定义清理目录
 │   └── logs/                   # 运行日志（首次运行生成）
 └── src/
-    ├── version.py              # 版本号与应用元信息
+    ├── version.py              # 版本号与应用元信息（唯一版本来源）
     ├── core/                   # 核心逻辑（无 GUI 依赖，可独立测试）
     │   ├── runtime.py          # 应用根目录、管理员判定、自我提权
     │   ├── scanner.py          # 目录大小扫描（懒加载 / 预算控制）
@@ -79,7 +94,7 @@ C_improve/
         ├── fmt.py              # 体积格式化、路径与文件属性工具
         ├── logger.py           # 滚动日志（文件 + 界面回显）
         ├── config.py           # 配置读写
-        └── taskrunner.py       # 后台任务调度（单线程 + 世代号 + 队列）
+        └── taskrunner.py       # 后台任务调度（三通道 + 优先级 + 世代号）
 ```
 
 ---
@@ -259,32 +274,79 @@ C:\Temp\MyAppCache
 
 ### 环境要求
 - Windows 10 / 11
-- Python 3.8 及以上（含 tkinter，官方安装包默认包含）
-- PyInstaller 6.0 及以上（仅打包时需要）
+- Python 3.10（便携包会内嵌**同版本**的 embeddable 解释器，版本必须一致）
+- 可选：MinGW gcc（用于编译原生启动器；缺失时自动降级为 `.bat` 启动器）
 
-### 一键构建
+### 三种构建方式
 
 ```bash
 build.bat
 ```
 
-脚本会自动检查 Python 与 PyInstaller（缺失时自动安装），然后产出 `dist\DiskCleaner.exe`。
+| 方式 | 产物 | 说明 |
+|------|------|------|
+| 1. Embeddable 便携包 | `dist/DiskCleaner-portable.zip` | **推荐**，与企业安全软件兼容性最好 |
+| 2. Nuitka | `dist/DiskCleaner-nuitka.zip` | 编译为原生机器码，体积 7-8 MB |
+| 3. PyInstaller | `dist/DiskCleaner.exe` | 运行时解压到 `%TEMP%`，可能被拦截 |
 
-### 手动构建
+方式 1 只是调用 `scripts/build_portable.py`——**CI 发布用的也是这个脚本**，因此本地构建产物与官方 Release 完全一致。
 
 ```bash
-python -m pip install --upgrade pyinstaller
-python -m PyInstaller --clean --noconfirm --onefile --windowed --name DiskCleaner main.py
+# 也可直接调用脚本（CI 与本地行为一致）
+python scripts/build_portable.py
 ```
 
-- `--onefile`：打包为单个 exe，便于分发
-- `--windowed`：不弹出控制台窗口
-- 首次运行会在 exe 同目录生成 `data\settings.ini` 与 `data\logs\`
+构建流程：下载 embeddable 解释器 → 集成 tkinter → 配置 `_pth` → 拷贝源码与配置 → 编译 `DiskCleaner.exe` 启动器 → 打包 zip。
 
-### 版本管理
+---
 
-版本号统一维护在 `src/version.py` 的 `VERSION`，采用语义化版本 `MAJOR.MINOR.PATCH`；
-窗口标题会自动显示当前版本。
+## 🔄 维护与发布
+
+### 版本号唯一来源
+
+版本号只存在于 `src/version.py` 的 `VERSION`，窗口标题、exe 文件版本、Release 标题都由此派生，避免多处不同步。
+
+### 日常开发流程
+
+```bash
+git checkout -b fix/scan-budget      # 1. 开分支改代码
+#   ... 修改代码 ...
+python -m ruff check .               # 2. 本地自检（与 CI 同一规则）
+git commit -am "fix: 修正扫描预算边界"
+git push origin fix/scan-budget      # 3. 推送，CI 自动检查
+```
+
+合并到 `main` 后，CI 会跑：ruff 规范检查 → 语法编译 → 模块导入 → 版本号与 CHANGELOG 一致性。
+
+### 发布新版本（一条命令）
+
+```bash
+python scripts/release.py patch -m "修复大目录扫描超时" --push
+```
+
+脚本自动完成：
+
+1. 递增 `VERSION`（`patch` / `minor` / `major` 三选一）
+2. 在 `CHANGELOG.md` 插入 `## [x.y.z] - 日期` 条目
+3. `git commit` + `git tag -a vX.Y.Z`
+4. `--push` 推送提交与 tag → **GitHub Actions 自动构建便携包并发布 Release**
+
+不想自动推送时省略 `--push`，脚本会打印需要手动执行的命令。
+
+查看当前版本：
+
+```bash
+python scripts/release.py --show
+```
+
+### CI 会做什么
+
+| 工作流 | 触发条件 | 动作 |
+|--------|----------|------|
+| `ci.yml` | 推送到 `main`、提交 PR、手动 | ruff 检查、编译检查、导入检查、版本/CHANGELOG 一致性校验 |
+| `release.yml` | 推送 `v*` tag、手动 | 校验 tag 与版本号一致 → 构建便携包 → 创建 GitHub Release 并上传 zip |
+
+> 发布产物挂在 Release 页面，用户下载 `DiskCleaner-portable.zip` 解压即可，无需自行构建。
 
 ---
 
@@ -298,15 +360,8 @@ python -m PyInstaller --clean --noconfirm --onefile --windowed --name DiskCleane
 
 - 查看日志文件 `data/logs/diskcleaner.log` 获取详细运行信息
 - 详细配置说明见本文档「配置文件」章节
+- 历史版本变更见 [CHANGELOG.md](CHANGELOG.md)
 
 ---
 
-## 版本记录
-
-| 版本 | 说明 |
-|------|------|
-| v1.0.0 | 首个版本：磁盘占用可视化、文件分类、18 项清理建议、一键采用建议、管理员提权、自定义清理目录、日志与配置 |
-
----
-
-*Last updated: 2026-10-20*
+*Last updated: 2026-10-22*

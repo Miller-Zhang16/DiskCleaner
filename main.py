@@ -14,9 +14,15 @@ import tkinter as tk
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from src.core.runtime import (config_path, custom_targets_path, data_dir,  # noqa: E402
-                              enable_dpi_awareness, icon_path, log_dir,
-                              set_app_user_model_id)
+from src.core.runtime import (  # noqa: E402
+    config_path,
+    custom_targets_path,
+    data_dir,
+    enable_dpi_awareness,
+    icon_path,
+    log_dir,
+    set_app_user_model_id,
+)
 from src.core.targets import build_targets  # noqa: E402
 from src.gui.app import CleanupApp  # noqa: E402
 from src.utils.config import Config  # noqa: E402
