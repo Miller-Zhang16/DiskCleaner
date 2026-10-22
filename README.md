@@ -1,4 +1,403 @@
-# C 盘清理助手 (DiskCleaner)
+# DiskCleaner
+
+> A Windows C: drive cleanup assistant — visualize disk usage, safely clean temporary files, classify files, and apply cleanup suggestions with one click. Download, double-click, run. No Python installation required.
+
+**Languages:** [English](#-english) · [中文](#-中文)
+
+---
+
+# 🇬🇧 English
+
+## 📖 Introduction
+
+**DiskCleaner** is a C: drive cleanup tool for Windows. It provides disk usage visualization, automatic
+temporary file cleanup, file classification, cleanup suggestions, and one-click cleanup through a GUI.
+Download, double-click, and run — no Python environment needed.
+
+- Platform: Windows 10 / 11
+- Tech stack: Python 3.8+ (standard library + tkinter only, **no third-party runtime dependencies**)
+- Distribution: source project + one-click build script + packaged `DiskCleaner.exe`
+
+---
+
+## 🎯 Core Features
+
+### 1. Disk Usage Visualization
+- The top bar shows C: drive **total / used / free** plus a usage bar (turns orange above 75%, red above 90%)
+- The **Disk Browser** tab displays a tree where you can drill down into every folder and file size
+- **Lazy loading**: children are read only when a folder is expanded, and sizes are computed asynchronously,
+  so the UI never freezes on disk I/O
+- Click the **Size** column to compute any folder on demand; when the scan budget is hit, a `≥` prefix marks
+  the value as a lower bound
+
+### 2. File Classification
+Items are classified by path rules plus file extension, and color-coded in the list:
+
+| Category | Scope |
+|----------|-------|
+| System files | `C:\Windows`, `System Volume Information`, `pagefile.sys` / `hiberfil.sys`, etc. |
+| Application files | `Program Files`, `Program Files (x86)`, `ProgramData`, `AppData` |
+| Data files | `Documents` / `Pictures` / `Videos` / `Music` / `Desktop` / `Downloads` / `OneDrive` |
+| Cache & temp | Various `Temp`, `Prefetch`, browser caches, `SoftwareDistribution\Download`, WER, crash dumps |
+| Recycle Bin | `$Recycle.Bin` |
+| Other | Anything not matching the rules above |
+
+> Classification is for reference only. User data folders such as Desktop, Documents, and Downloads are
+> **never** marked as "cleanable".
+
+### 3. Automatic Temp File Cleanup
+18 built-in **conservative and safe** cleanup targets can be selected and executed directly. Targets that
+require administrator privileges trigger a UAC prompt from the system when you click
+"Restart as Administrator".
+
+### 4. Cleanup Suggestions + One-Click Apply
+Each cleanup target shows its **estimated reclaimable space, category, risk level, and description**.
+Clicking "Apply Suggestions" auto-selects every built-in safe target, asks for confirmation once, executes
+them in a single pass, then reports the actual space freed and any skipped files.
+
+### 5. Administrator Privileges
+- In normal mode, targets requiring administrator privileges are greyed out with a hint
+- "Restart as Administrator" elevates via `ShellExecuteW(runas)`. If the user cancels the UAC prompt, the app
+  keeps running in normal mode instead of crashing
+
+---
+
+## 📁 Project Structure
+
+```
+C_improve/
+├── main.py                     # Entry point
+├── build.bat                   # Local one-click build (three modes)
+├── CHANGELOG.md                # Changelog (maintained by the release script)
+├── requirements.txt            # Build-time dependencies (none at runtime)
+├── requirements-dev.txt        # Dev / CI dependencies (ruff)
+├── pyproject.toml              # ruff configuration
+├── README.md
+├── LICENSE
+├── .gitignore
+├── assets/
+│   └── icon.ico                # App icon (window + exe resource)
+├── launcher/                   # Native C launcher source
+│   ├── launcher.c              # Spawns python-embed\pythonw.exe
+│   └── launcher.rc             # Icon and version info resource
+├── scripts/
+│   ├── build_portable.py       # Portable build (shared by local and CI)
+│   ├── check_version.py        # VERSION / CHANGELOG / tag consistency check
+│   └── release.py              # Version bump + CHANGELOG + tag
+├── .github/workflows/
+│   ├── ci.yml                  # Checks: ruff / compile / imports / version consistency
+│   └── release.yml             # Builds and publishes a Release on tag push
+├── data/
+│   ├── settings.ini            # Configuration (editable in Notepad)
+│   ├── custom_targets.txt      # Custom cleanup directories
+│   └── logs/                   # Runtime logs (created on first run)
+└── src/
+    ├── version.py              # Version and app metadata (single source of truth)
+    ├── core/                   # Core logic (no GUI dependency, independently testable)
+    │   ├── runtime.py          # App root, admin detection, self-elevation
+    │   ├── scanner.py          # Directory size scanning (lazy / budgeted)
+    │   ├── classify.py         # File classification
+    │   ├── targets.py          # Cleanup target table and size estimation
+    │   ├── cleaner.py          # Deletion executor (whitelist checks / fault tolerance)
+    │   └── recycle.py          # Recycle Bin Shell API wrapper
+    ├── gui/                    # Presentation layer
+    │   ├── app.py              # Main window, disk overview, task scheduling
+    │   ├── browse_tab.py       # Disk browser tab
+    │   └── suggest_tab.py      # Cleanup suggestions tab
+    └── utils/                  # Shared utilities
+        ├── fmt.py              # Size formatting, path and file attribute helpers
+        ├── logger.py           # Rotating log (file + UI echo)
+        ├── config.py           # Configuration I/O
+        └── taskrunner.py       # Background scheduler (lanes + priorities + generations)
+```
+
+---
+
+## 🚀 Usage
+
+### Launch
+
+```bash
+# Run from source
+python main.py
+
+# Or double-click the packaged executable
+DiskCleaner.exe
+```
+
+### Interface Overview
+
+```
+┌──────────────────────────────────────────────────────────┐
+│ C: drive: Used ███████░░░░ 312G/500G   Free 188G          │
+│ [Refresh Disk] [Reload Config] [Restart as Administrator] │
+├──────────────────────────────────────────────────────────┤
+│ [ Disk Browser ] [ Cleanup Suggestions ]                  │
+│   Disk Browser: lazy tree, drill down to inspect usage    │
+│   Suggestions: tick targets + [Apply][Clean Selected]     │
+├──────────────────────────────────────────────────────────┤
+│ Status bar / progress bar                                 │
+├──────────────────────────────────────────────────────────┤
+│ Runtime log (also written to data/logs/diskcleaner.log)   │
+└──────────────────────────────────────────────────────────┘
+```
+
+### Disk Browser Operations
+
+| Action | Description |
+|--------|-------------|
+| Expand a folder | Drill into subfolders/files; the first few folders compute sizes automatically |
+| Click the "Size" column | Compute that folder's size on demand (shows "computing…") |
+| Right-click → Open in Explorer | Reveal the selected item in its parent folder |
+| Right-click → Compute Size | Same as clicking the Size column |
+| Right-click → Delete… | Delete the selected file/folder (confirmation required; critical system paths are blocked) |
+| Right-click → Copy Full Path | Copy the absolute path to the clipboard |
+
+### Cleanup Suggestions Operations
+
+| Action | Description |
+|--------|-------------|
+| Click the "Select" column | Toggle whether a target participates in cleanup (persisted to settings.ini) |
+| Apply Suggestions | Select all built-in safe targets and run them |
+| Clean Selected | Run only the currently ticked targets |
+| Re-estimate | Recompute the reclaimable space of every target |
+
+---
+
+## ⚙️ Configuration
+
+### settings.ini
+
+Located at `data/settings.ini` (created automatically on first run):
+
+```ini
+[General]
+scan_budget_seconds = 6      ; Time budget per directory scan (s). Larger = more accurate but slower
+scan_budget_entries = 200000 ; Entry budget per directory scan
+temp_min_age_hours = 24      ; Only clean temp files older than this many hours
+auto_size_limit = 150        ; Max number of subfolders auto-sized when expanding a folder
+log_level = INFO             ; DEBUG / INFO / WARNING / ERROR
+log_max_bytes = 1048576      ; Max size of one log file before rotation
+log_backup_count = 3         ; Number of rotated logs to keep
+window_geometry = 1120x740   ; Window size (saved on exit)
+confirm_before_clean = true  ; Ask for confirmation before cleaning
+
+[Targets]
+; Selection state of each cleanup target, true = selected by default
+user_temp = true
+win_temp = true
+recycle = false
+...
+```
+
+### custom_targets.txt
+
+Located at `data/custom_targets.txt`. One absolute path per line adds **custom cleanup directories**:
+
+```
+# Lines starting with # are comments
+C:\Temp\MyAppCache
+```
+
+Only the **contents** of the directory are deleted; the directory itself is preserved.
+
+---
+
+## 📝 Logging
+
+Logs are written to `data/logs/diskcleaner.log`, rotating at 1 MB × 3 files, and are echoed to the log panel
+at the bottom of the window:
+
+```
+[2026-10-20 13:05:12] [INFO] Application started. Version v1.0.0, privileges: Administrator
+[2026-10-20 13:05:20] [INFO] Cleanup started: User temp files …
+[2026-10-20 13:05:24] [INFO] [User temp files] Cleaning C:\Users\me\AppData\Local\Temp: freed 2.2 GB, deleted 1834 items
+[2026-10-20 13:05:25] [INFO] One-click cleanup finished.; Freed (estimated): 3.9 GB, deleted 2911 items
+```
+
+---
+
+## 🔧 Advanced Features
+
+### Custom Cleanup Directories
+Append your own cache folders to `data/custom_targets.txt` (useful for in-house applications). Restart the
+app and they appear at the bottom of the cleanup suggestions list.
+
+### Reload Configuration
+After editing `settings.ini`, click "Reload Config" in the UI to apply changes without restarting.
+
+### High DPI Support
+DPI awareness is enabled at startup (`SetProcessDpiAwareness`), so the UI stays crisp on high-DPI displays.
+
+### Background Task Model
+Disk scanning and deletion both run on background worker threads and communicate with the main thread via
+a generation counter plus a result queue. The scheduler has **two lanes** — `interactive` (disk browsing)
+and `batch` (size estimation / cleanup) — each consumed by its own thread. Within a lane, work is ordered by
+**priority** (directory listing > user cleanup > directory scan > size estimation), so expanding folders and
+starting a cleanup respond immediately instead of queueing behind bulk estimation jobs. Clicking
+"Re-estimate" cancels all stale jobs in that lane, keeping the UI responsive.
+
+---
+
+## 🛡️ Security Notes
+
+### Never Cleaned
+The following are **never** offered as cleanup targets and cannot be deleted via the context menu:
+
+- `hiberfil.sys`, `pagefile.sys`, `swapfile.sys` (use `powercfg /h off` if needed)
+- `WinSxS` (use `DISM /StartComponentCleanup` if needed)
+- `C:\Windows\Installer`, `System32`
+- The `$Recycle.Bin` directory itself, and shadow copies
+- User data folders such as Desktop / Documents / Downloads (listed only as high-risk optional targets in
+  Cleanup Suggestions, unchecked by default)
+
+### Deletion Safety Mechanisms
+
+1. **Whitelist path validation**: before deleting, `realpath` + `commonpath` verify the target lies inside
+   the cleanup root, blocking prefix bypasses such as `C:\Windows\Temp2`
+2. **Never descend into reparse points**: junctions / symlinks are unlinked only, never traversed — the
+   single largest source of accidental deletion
+3. **Per-item fault tolerance**: read-only files have the attribute cleared and are retried; files locked by
+   another process (winerror 32) are retried briefly then added to the "skipped" list; permission errors are
+   skipped without aborting the whole run
+4. **Self exclusion**: the application's own directory is never included in any cleanup scope
+5. **Temp file age filter**: `%TEMP%` only removes files older than the configured age (24 hours by default),
+   avoiding deletion of files currently in use
+
+### Freed Space Accounting
+"Actual freed" is the **sum of `st_size` for successfully deleted files**, not the difference in free disk
+space (which would be polluted by background system writes). The value is therefore an estimate, and the UI
+labels it as such.
+
+---
+
+## 🐛 FAQ
+
+### Some cleanup targets are greyed out and not clickable
+**Cause**: Those targets require administrator privileges.
+**Fix**: Click "Restart as Administrator" and choose "Yes" in the UAC dialog.
+
+### A folder size shows `≥ 12.3 GB`
+**Cause**: The folder exceeds the `scan_budget_seconds` / `scan_budget_entries` budget and the scan stopped early.
+**Fix**: This is a **lower bound** — actual usage may be larger. For an exact value, raise the budget in
+`settings.ini` and retry.
+
+### Cleanup reports "skipped N items (in use or no permission)"
+**Cause**: Those files are held by another program, or the current privileges are insufficient.
+**Fix**: Close the program using them (browser, Office, etc.) and retry, or run as administrator.
+
+### I have to sign in to websites again after clearing browser caches
+**Cause**: This app only clears the `Cache` / `Code Cache` / `GPUCache` / `Service Worker\CacheStorage`
+subfolders. It **never** touches cookies, bookmarks, passwords, or history. If a re-login is required, that
+is the browser's own policy.
+
+### Log files grow too large
+**Fix**: Lower `log_max_bytes` / `log_backup_count` in `settings.ini`, or delete old files under `data/logs/`.
+
+---
+
+## 📋 Build Instructions
+
+### Requirements
+- Windows 10 / 11
+- Python 3.10 (the portable package embeds an embeddable interpreter of the **same version** — versions must match)
+- Optional: MinGW gcc (to compile the native launcher; falls back to a `.bat` launcher when missing)
+
+### Three Build Modes
+
+```bash
+build.bat
+```
+
+| Mode | Output | Notes |
+|------|--------|-------|
+| 1. Embeddable portable | `dist/DiskCleaner-portable.zip` | **Recommended**, best compatibility with enterprise security software |
+| 2. Nuitka | `dist/DiskCleaner-nuitka.zip` | Compiled to native machine code, 7-8 MB |
+| 3. PyInstaller | `dist/DiskCleaner.exe` | Extracts to `%TEMP%` at runtime, may be blocked |
+
+Mode 1 simply calls `scripts/build_portable.py` — **the same script used by CI releases**, so local builds
+match official Releases exactly.
+
+```bash
+# Or call the script directly (identical to CI behavior)
+python scripts/build_portable.py
+```
+
+Build pipeline: download embeddable interpreter → integrate tkinter → configure `_pth` → copy sources and
+config → compile the `DiskCleaner.exe` launcher → pack the zip.
+
+---
+
+## 🔄 Maintenance and Release
+
+### Single Source of Version
+The version lives only in `VERSION` inside `src/version.py`. The window title, exe file version, and Release
+title all derive from it, so they can never fall out of sync.
+
+### Daily Development Flow
+
+```bash
+git checkout -b fix/scan-budget      # 1. Create a branch
+#   ... edit code ...
+python -m ruff check .               # 2. Local check (same rules as CI)
+git commit -am "fix: correct scan budget boundary"
+git push origin fix/scan-budget      # 3. Push; CI runs automatically
+```
+
+Once merged into `main`, CI runs: ruff lint → syntax compile → module imports → version/CHANGELOG consistency.
+
+### Releasing a New Version (one command)
+
+```bash
+python scripts/release.py patch -m "Fix timeout when scanning large folders" --push
+```
+
+The script automatically:
+
+1. Bumps `VERSION` (`patch` / `minor` / `major`)
+2. Inserts a `## [x.y.z] - date` entry into `CHANGELOG.md`
+3. Runs `git commit` + `git tag -a vX.Y.Z`
+4. With `--push`, pushes the commit and tag → **GitHub Actions builds the portable package and publishes a Release**
+
+Omit `--push` to have the script print the commands for you to run manually.
+
+Show the current version:
+
+```bash
+python scripts/release.py --show
+```
+
+### What CI Does
+
+| Workflow | Trigger | Action |
+|----------|---------|--------|
+| `ci.yml` | Push to `main`, pull request, manual | ruff lint, compile check, import check, version/CHANGELOG consistency |
+| `release.yml` | Push a `v*` tag, manual | Verify tag matches version → build portable package → create GitHub Release and upload the zip |
+
+> Release artifacts live on the Releases page. Users just download `DiskCleaner-portable.zip` and extract it —
+> no local build required.
+
+---
+
+## 📄 License
+
+Released under the [MIT License](LICENSE).
+
+---
+
+## 📞 Support
+
+- Check `data/logs/diskcleaner.log` for detailed runtime information
+- See the "Configuration" section of this document for all settings
+- See [CHANGELOG.md](CHANGELOG.md) for version history
+
+---
+
+*Last updated: 2026-10-22*
+
+---
+
+# 🇨🇳 中文
 
 ## 📖 简介
 
@@ -350,7 +749,7 @@ python scripts/release.py --show
 
 ---
 
-## 📄 License
+## 📄 License（许可证）
 
 本项目基于 [MIT License](LICENSE) 开源。
 
