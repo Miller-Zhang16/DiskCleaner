@@ -1,0 +1,4 @@
+# 运行时不需要任何第三方依赖（仅 Python 标准库 + tkinter）
+# 以下依赖仅在「打包 exe」时需要
+
+pyinstaller>=6.0

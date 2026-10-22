@@ -1,0 +1,34 @@
+/* DiskCleaner.exe 资源文件：嵌入图标 + 文件版本信息 */
+
+#include <winuser.h>
+#include <winver.h>
+
+1 ICON "..\\assets\\icon.ico"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION 1,0,0,0
+PRODUCTVERSION 1,0,0,0
+FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+FILEFLAGS 0
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "080404b0"
+        BEGIN
+            VALUE "CompanyName",      "DiskCleaner"
+            VALUE "FileDescription", "C 盘清理助手"
+            VALUE "FileVersion",     "1.0.0.0"
+            VALUE "InternalName",    "DiskCleaner.exe"
+            VALUE "LegalCopyright",  "Copyright (C) 2026"
+            VALUE "OriginalFilename","DiskCleaner.exe"
+            VALUE "ProductName",     "DiskCleaner"
+            VALUE "ProductVersion",  "1.0.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0804, 1200
+    END
+END
