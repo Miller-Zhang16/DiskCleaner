@@ -292,9 +292,25 @@ class CleanupApp:
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
 
+    @staticmethod
+    def _geometry_valid(geometry):
+        """窗口几何是否值得持久化。
+
+        异常退出或未显示的窗口可能报告 1x1 这类尺寸，写入配置会让
+        用户下次启动时窗口异常，因此只保存不小于最小尺寸的值。
+        """
+        try:
+            size = geometry.split("+")[0]
+            width, height = (int(v) for v in size.split("x"))
+        except (AttributeError, ValueError):
+            return False
+        return width >= 900 and height >= 600
+
     def on_close(self):
         try:
-            self.config.set_window_geometry(self.root.geometry())
+            geometry = self.root.geometry()
+            if self._geometry_valid(geometry):
+                self.config.set_window_geometry(geometry)
             self.config.save()
         except Exception:  # noqa: BLE001
             pass

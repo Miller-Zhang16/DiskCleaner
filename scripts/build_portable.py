@@ -27,6 +27,9 @@ PORTABLE = os.path.join(DIST, "DiskCleaner-portable")
 ZIP_PATH = os.path.join(DIST, "DiskCleaner-portable.zip")
 CACHE = os.path.join(DIST, ".cache")
 
+sys.path.insert(0, ROOT)
+from src.utils.config import DEFAULTS  # noqa: E402
+
 # 便携包内嵌的解释器版本必须与本机构建解释器一致，否则 _tkinter.pyd 的 ABI 不兼容
 EMBED_VERSION = "%d.%d.%d" % sys.version_info[:3]
 EMBED_URL = (
@@ -139,6 +142,22 @@ def patch_pth():
     log("      %s 配置完成" % candidates[0])
 
 
+def write_default_settings(dest_ini):
+    """生成出厂默认 settings.ini。
+
+    不直接拷贝开发目录里的配置文件：那里积累了开发者的窗口尺寸、
+    清理项勾选历史等本机状态，随包分发会让用户拿到非初始状态。
+    窗口尺寸这类运行时状态交由程序首次退出时写入。
+    """
+    lines = ["[General]"]
+    for key, val in DEFAULTS.items():
+        if key == "window_geometry":
+            continue  # 运行时状态，不写入出厂配置，由程序按默认值处理
+        lines.append("%s = %s" % (key, val))
+    with open(dest_ini, "w", encoding="utf-8", newline="\r\n") as fh:
+        fh.write("\n".join(lines) + "\n")
+
+
 def copy_project():
     """拷贝程序本体、源码、配置模板与图标。"""
     log("[5/6] 拷贝项目文件 ...")
@@ -148,11 +167,13 @@ def copy_project():
         os.path.join(PORTABLE, "src"),
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
     )
-    os.makedirs(os.path.join(PORTABLE, "data"), exist_ok=True)
-    for fname in ("settings.ini", "custom_targets.txt"):
-        src = os.path.join(ROOT, "data", fname)
-        if os.path.isfile(src):
-            shutil.copy2(src, os.path.join(PORTABLE, "data"))
+    data_dir = os.path.join(PORTABLE, "data")
+    os.makedirs(data_dir, exist_ok=True)
+    write_default_settings(os.path.join(data_dir, "settings.ini"))
+    # custom_targets.txt 是纯模板注释文件，可直接拷贝
+    src = os.path.join(ROOT, "data", "custom_targets.txt")
+    if os.path.isfile(src):
+        shutil.copy2(src, data_dir)
     if os.path.isdir(os.path.join(ROOT, "assets")):
         shutil.copytree(os.path.join(ROOT, "assets"), os.path.join(PORTABLE, "assets"))
 
