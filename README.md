@@ -132,10 +132,11 @@ DiskCleaner.exe
 │ C: drive: Used ███████░░░░ 312G/500G   Free 188G          │
 │ [Refresh Disk] [Reload Config] [Restart as Administrator] │
 ├──────────────────────────────────────────────────────────┤
-│ [ Disk Browser ] [ Large Files ] [ Cleanup Suggestions ]   │
+│ [ Disk Browser ] [ Large Files ] [ Cleanup Suggestions ] [ Settings ] │
 │   Disk Browser: lazy tree, drill down to inspect usage    │
 │   Large Files: top-N biggest files on the drive           │
 │   Suggestions: tick targets + [Apply][Clean Selected]     │
+│   Settings: edit settings.ini from the GUI                │
 ├──────────────────────────────────────────────────────────┤
 │ Status bar / progress bar                                 │
 ├──────────────────────────────────────────────────────────┤
@@ -520,10 +521,11 @@ DiskCleaner.exe
 │ C 盘状态：已用 ███████░░░░ 312G/500G   可用 188G          │
 │ [刷新磁盘信息] [重新加载配置] [以管理员身份重启]           │
 ├──────────────────────────────────────────────────────────┤
-│ [ 磁盘浏览 ] [ 大文件 ] [ 清理建议 ]                       │
+│ [ 磁盘浏览 ] [ 大文件 ] [ 清理建议 ] [ 设置 ]               │
 │   磁盘浏览：树形懒加载，逐级展开查看占用                   │
 │   大文件：扫描整盘最大的 N 个文件                          │
 │   清理建议：勾选清理项 + [一键采用建议][清理选中项]         │
+│   设置：在界面内编辑 settings.ini 配置                     │
 ├──────────────────────────────────────────────────────────┤
 │ 状态栏 / 进度条                                           │
 ├──────────────────────────────────────────────────────────┤

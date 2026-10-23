@@ -13,6 +13,7 @@ from ..utils.taskrunner import LANE_BATCH, LANE_SCAN, PRIORITY_CLEAN, TaskRunner
 from ..version import TITLE, VERSION
 from .browse_tab import BrowseTab
 from .large_files_tab import LargeFilesTab
+from .settings_tab import SettingsTab
 from .suggest_tab import SuggestTab
 
 
@@ -84,9 +85,11 @@ class CleanupApp:
         self.browse_tab = BrowseTab(notebook, self.runner, self)
         self.large_files_tab = LargeFilesTab(notebook, self.runner, self)
         self.suggest_tab = SuggestTab(notebook, self.runner, self, self.targets)
+        self.settings_tab = SettingsTab(notebook, self.runner, self)
         notebook.add(self.browse_tab, text="  磁盘浏览  ")
         notebook.add(self.large_files_tab, text="  大文件  ")
         notebook.add(self.suggest_tab, text="  清理建议  ")
+        notebook.add(self.settings_tab, text="  设置  ")
 
     def _build_overview(self):
         top = ttk.LabelFrame(self.root, text="C 盘状态")
@@ -248,6 +251,7 @@ class CleanupApp:
         for t in self.targets:
             t["_checked"] = self.config.target_default(t["key"], t.get("default", False))
         self.suggest_tab.refresh_rows()
+        self.settings_tab.load()
         self.refresh_disk()
         self.logger.info("已重新加载配置：%s" % self.config.path)
         messagebox.showinfo("配置", "已重新加载配置文件。")
