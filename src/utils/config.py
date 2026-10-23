@@ -19,6 +19,8 @@ DEFAULTS = {
     "scan_budget_entries": "200000",  # 单次目录扫描条目预算
     "temp_min_age_hours": "24",       # 临时文件仅清理该小时数之前的
     "auto_size_limit": "150",         # 展开目录时自动计算大小的子目录数上限
+    "large_files_top_n": "200",       # 大文件扫描返回的结果数上限
+    "large_files_min_mb": "100",      # 大文件扫描仅统计不小于该 MB 数的文件（0 表示不过滤）
     "log_level": "INFO",
     "log_max_bytes": "1048576",
     "log_backup_count": "3",
@@ -126,6 +128,16 @@ class Config:
     @property
     def auto_size_limit(self):
         return self.get_int(GENERAL, "auto_size_limit", 150)
+
+    @property
+    def large_files_top_n(self):
+        return self.get_int(GENERAL, "large_files_top_n", 200)
+
+    @property
+    def large_files_min_bytes(self):
+        """大文件扫描的最小体积阈值（字节），0 表示不过滤。"""
+        mb = self.get_int(GENERAL, "large_files_min_mb", 100)
+        return max(0, mb) * 1024 * 1024
 
     @property
     def log_level(self):

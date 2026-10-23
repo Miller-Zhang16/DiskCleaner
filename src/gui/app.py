@@ -12,6 +12,7 @@ from ..utils.fmt import fmt_size
 from ..utils.taskrunner import LANE_BATCH, LANE_SCAN, PRIORITY_CLEAN, TaskRunner
 from ..version import TITLE, VERSION
 from .browse_tab import BrowseTab
+from .large_files_tab import LargeFilesTab
 from .suggest_tab import SuggestTab
 
 
@@ -34,6 +35,7 @@ class CleanupApp:
 
         # 注册后台通道：浏览用 fast/scan 通道，估算与清理用 batch 通道
         self.runner.register("browse", self.browse_tab.handle, lane=LANE_SCAN)
+        self.runner.register("large_files", self.large_files_tab.handle, lane=LANE_SCAN)
         self.runner.register("suggest", self.suggest_tab.handle, lane=LANE_BATCH)
         self.runner.register("clean", self.handle_clean, lane=LANE_BATCH)
 
@@ -80,8 +82,10 @@ class CleanupApp:
         notebook.pack(side="top", fill="both", expand=True, padx=8, pady=8)
 
         self.browse_tab = BrowseTab(notebook, self.runner, self)
+        self.large_files_tab = LargeFilesTab(notebook, self.runner, self)
         self.suggest_tab = SuggestTab(notebook, self.runner, self, self.targets)
         notebook.add(self.browse_tab, text="  磁盘浏览  ")
+        notebook.add(self.large_files_tab, text="  大文件  ")
         notebook.add(self.suggest_tab, text="  清理建议  ")
 
     def _build_overview(self):

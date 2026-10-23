@@ -132,8 +132,9 @@ DiskCleaner.exe
 │ C: drive: Used ███████░░░░ 312G/500G   Free 188G          │
 │ [Refresh Disk] [Reload Config] [Restart as Administrator] │
 ├──────────────────────────────────────────────────────────┤
-│ [ Disk Browser ] [ Cleanup Suggestions ]                  │
+│ [ Disk Browser ] [ Large Files ] [ Cleanup Suggestions ]   │
 │   Disk Browser: lazy tree, drill down to inspect usage    │
+│   Large Files: top-N biggest files on the drive           │
 │   Suggestions: tick targets + [Apply][Clean Selected]     │
 ├──────────────────────────────────────────────────────────┤
 │ Status bar / progress bar                                 │
@@ -176,6 +177,8 @@ scan_budget_seconds = 6      ; Time budget per directory scan (s). Larger = more
 scan_budget_entries = 200000 ; Entry budget per directory scan
 temp_min_age_hours = 24      ; Only clean temp files older than this many hours
 auto_size_limit = 150        ; Max number of subfolders auto-sized when expanding a folder
+large_files_top_n = 200      ; Max number of largest files returned by the big-file scan
+large_files_min_mb = 100     ; Only report files at least this large (MB, 0 = no filter)
 log_level = INFO             ; DEBUG / INFO / WARNING / ERROR
 log_max_bytes = 1048576      ; Max size of one log file before rotation
 log_backup_count = 3         ; Number of rotated logs to keep
@@ -517,8 +520,9 @@ DiskCleaner.exe
 │ C 盘状态：已用 ███████░░░░ 312G/500G   可用 188G          │
 │ [刷新磁盘信息] [重新加载配置] [以管理员身份重启]           │
 ├──────────────────────────────────────────────────────────┤
-│ [ 磁盘浏览 ] [ 清理建议 ]                                 │
+│ [ 磁盘浏览 ] [ 大文件 ] [ 清理建议 ]                       │
 │   磁盘浏览：树形懒加载，逐级展开查看占用                   │
+│   大文件：扫描整盘最大的 N 个文件                          │
 │   清理建议：勾选清理项 + [一键采用建议][清理选中项]         │
 ├──────────────────────────────────────────────────────────┤
 │ 状态栏 / 进度条                                           │
@@ -561,6 +565,8 @@ scan_budget_seconds = 6      ; 单次目录扫描的时间预算（秒），越�
 scan_budget_entries = 200000 ; 单次目录扫描的条目预算
 temp_min_age_hours = 24      ; 临时文件仅清理该小时数之前的项目
 auto_size_limit = 150        ; 展开目录时自动计算大小的子目录数量上限
+large_files_top_n = 200      ; 大文件扫描返回的结果数上限
+large_files_min_mb = 100     ; 大文件扫描仅统计不小于该 MB 数的文件（0 表示不过滤）
 log_level = INFO             ; DEBUG / INFO / WARNING / ERROR
 log_max_bytes = 1048576      ; 单份日志最大字节数，超出后滚动
 log_backup_count = 3         ; 保留的历史日志份数
