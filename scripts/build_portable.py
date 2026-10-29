@@ -42,6 +42,38 @@ TCL_DIRS = [
     os.path.join("tcl", "tk8.6"),
 ]
 
+# tkinter 运行所需的 C 扩展与动态库。不同 Python 版本命名不同：
+#   3.10-3.13: tcl86t.dll / tk86t.dll / zlib.dll，tcl 资源是解开的目录（tcl8.6/tk8.6）
+#   3.14+:     tcl90.dll / tcl9tk90.dll / zlib1.dll，tcl 资源以 zip 形式分发
+# 这里按版本探测，二者其一即可。
+_TKINTER_ASSETS = (
+    # (候选文件名元组, 是否必需)
+    (("_tkinter.pyd",), True),
+    (("tcl86t.dll", "tcl90.dll"), True),
+    (("tk86t.dll", "tcl9tk90.dll"), True),
+    (("zlib.dll", "zlib1.dll"), True),
+)
+
+
+def _copy_tcl_libs_314(prefix, dest):
+    """Python 3.14+ 的 tcl/tk 资源：优先用目录，否则从 zip 解出。
+
+    3.14 安装包里 tcl/tk 常以 ``libtcl9.0.x.zip`` / ``libtk9.0.x.zip`` 形式
+    放在 ``<prefix>/tcl`` 下，需要解到 ``python-embed/tcl`` 供 _tkinter 加载。
+    """
+    tcl_src = os.path.join(prefix, "tcl")
+    if not os.path.isdir(tcl_src):
+        return False
+
+    # 直接拷贝 zip 到目标，启动时由 _tkinter 自行读取（3.14 内建支持）
+    os.makedirs(dest, exist_ok=True)
+    copied = False
+    for fname in os.listdir(tcl_src):
+        if fname.startswith(("libtcl", "libtk")) and fname.endswith(".zip"):
+            shutil.copy2(os.path.join(tcl_src, fname), os.path.join(dest, fname))
+            copied = True
+    return copied
+
 
 def log(msg):
     print(msg, flush=True)
@@ -86,24 +118,37 @@ def copy_tkinter():
 
     dest = os.path.join(PORTABLE, "python-embed")
     copied = 0
-    for fname in ("_tkinter.pyd", "tcl86t.dll", "tk86t.dll", "zlib.dll"):
-        for d in dll_dirs:
-            src = os.path.join(d, fname)
-            if os.path.isfile(src):
-                shutil.copy2(src, dest)
-                copied += 1
+    for candidates, required in _TKINTER_ASSETS:
+        found = False
+        for fname in candidates:
+            for d in dll_dirs:
+                src = os.path.join(d, fname)
+                if os.path.isfile(src):
+                    shutil.copy2(src, dest)
+                    copied += 1
+                    found = True
+                    break
+            if found:
                 break
+        if required and not found:
+            fail("未找到 tkinter 资源：%s，请确认当前 Python 安装了 tkinter。"
+                 % "/".join(candidates))
 
     if copied < 3:
         fail("未找到 tkinter 的 C 扩展，请确认当前 Python 安装了 tkinter（官方安装包默认包含）。")
 
-    for rel in ("tcl", os.path.join("Lib", "tcl")):
-        src = os.path.join(prefix, rel)
-        if os.path.isdir(src):
-            shutil.copytree(src, os.path.join(dest, "tcl"), dirs_exist_ok=True)
-            break
+    # tcl/tk 资源：3.14+ 用 zip 形式；3.10-3.13 用解开的目录
+    tcl_dest = os.path.join(dest, "tcl")
+    if _copy_tcl_libs_314(prefix, tcl_dest):
+        pass  # 3.14 zip 已就位
     else:
-        fail("未找到 tcl 资源目录。")
+        for rel in ("tcl", os.path.join("Lib", "tcl")):
+            src = os.path.join(prefix, rel)
+            if os.path.isdir(src):
+                shutil.copytree(src, tcl_dest, dirs_exist_ok=True)
+                break
+        else:
+            fail("未找到 tcl 资源目录。")
 
     src = os.path.join(prefix, "Lib", "tkinter")
     if os.path.isdir(src):
@@ -111,16 +156,16 @@ def copy_tkinter():
     else:
         fail("未找到 tkinter Python 包。")
 
-    # 只保留运行必需的两个 tcl 版本目录，去掉 tzdata 等冗余
-    tcl_root = os.path.join(dest, "tcl")
-    if os.path.isdir(tcl_root):
-        for entry in os.listdir(tcl_root):
+    # 3.10-3.13 路径校验：只保留运行必需的两个 tcl 版本目录
+    if os.path.isdir(os.path.join(tcl_dest, "tcl8.6")):
+        for entry in os.listdir(tcl_dest):
             if entry not in ("tcl8.6", "tk8.6"):
-                path = os.path.join(tcl_root, entry)
-                shutil.rmtree(path, ignore_errors=True) if os.path.isdir(path) else None
-    for rel in TCL_DIRS:
-        if not os.path.isdir(os.path.join(dest, rel)):
-            fail("tcl 目录缺失：%s" % rel)
+                path = os.path.join(tcl_dest, entry)
+                if os.path.isdir(path):
+                    shutil.rmtree(path, ignore_errors=True)
+        for rel in TCL_DIRS:
+            if not os.path.isdir(os.path.join(dest, rel)):
+                fail("tcl 目录缺失：%s" % rel)
 
 
 def patch_pth():
@@ -224,12 +269,21 @@ def make_launcher():
         log("      [警告] 未找到 gcc，降级为 .bat 启动器")
 
     bat = os.path.join(PORTABLE, "DiskCleaner.bat")
+    # 3.14+ 的 tcl/tk 是 zip 形式，由 _tkinter 自行加载，无需设 TCL_LIBRARY/TK_LIBRARY；
+    # 3.10-3.13 是解开的目录，需要显式设置。按实际是否存在 tcl8.6 目录决定。
+    tcl_dir = os.path.join(PORTABLE, "python-embed", "tcl", "tcl8.6")
+    if os.path.isdir(tcl_dir):
+        env_lines = (
+            "set \"TCL_LIBRARY=%~dp0python-embed\\tcl\\tcl8.6\"\r\n"
+            "set \"TK_LIBRARY=%~dp0python-embed\\tcl\\tk8.6\"\r\n"
+        )
+    else:
+        env_lines = ""
     with open(bat, "w", encoding="utf-8") as fh:
         fh.write(
             "@echo off\r\n"
             "cd /d \"%~dp0\"\r\n"
-            "set \"TCL_LIBRARY=%~dp0python-embed\\tcl\\tcl8.6\"\r\n"
-            "set \"TK_LIBRARY=%~dp0python-embed\\tcl\\tk8.6\"\r\n"
+            + env_lines +
             "start \"\" \"python-embed\\pythonw.exe\" \"main.py\"\r\n"
         )
     log("      DiskCleaner.bat 生成完成")

@@ -27,13 +27,17 @@ int main(void)
     char *sl = strrchr(dir, '\\');
     if (sl) *sl = '\0';
 
-    /* 3) 拼接环境变量与 pythonw.exe 路径 */
+    /* 3) 拼接环境变量与 pythonw.exe 路径。
+     * 仅 3.10-3.13 需要显式设置 TCL_LIBRARY/TK_LIBRARY（解开的目录形式）；
+     * 3.14+ 的 tcl/tk 是 zip 形式，由 _tkinter 自行定位，无需设置。 */
     _snprintf(tcl, sizeof(tcl), "%s\\python-embed\\tcl\\tcl8.6", dir);
     _snprintf(tk,  sizeof(tk),  "%s\\python-embed\\tcl\\tk8.6",  dir);
     _snprintf(python, sizeof(python), "%s\\python-embed\\pythonw.exe", dir);
 
-    SetEnvironmentVariableA("TCL_LIBRARY", tcl);
-    SetEnvironmentVariableA("TK_LIBRARY",  tk);
+    if (GetFileAttributesA(tcl) != INVALID_FILE_ATTRIBUTES) {
+        SetEnvironmentVariableA("TCL_LIBRARY", tcl);
+        SetEnvironmentVariableA("TK_LIBRARY",  tk);
+    }
 
     /* 4) 命令行："pythonw.exe" "main.py"（主进程目录为自身所在目录）*/
     _snprintf(cmdline, sizeof(cmdline), "\"%s\" \"main.py\"", python);
