@@ -21,6 +21,10 @@ DEFAULTS = {
     "auto_size_limit": "150",         # 展开目录时自动计算大小的子目录数上限
     "large_files_top_n": "200",       # 大文件扫描返回的结果数上限
     "large_files_min_mb": "100",      # 大文件扫描仅统计不小于该 MB 数的文件（0 表示不过滤）
+    "duplicates_min_mb": "1",         # 重复文件查找的最小体积阈值（MB）
+    "duplicates_budget_seconds": "60",  # 重复文件查找的时间预算（秒）
+    "history_max_records": "200",     # 清理历史保留的记录条数上限
+    "language": "zh_CN",              # 界面语言：zh_CN / en_US（重启后生效）
     "log_level": "INFO",
     "log_max_bytes": "1048576",
     "log_backup_count": "3",
@@ -138,6 +142,28 @@ class Config:
         """大文件扫描的最小体积阈值（字节），0 表示不过滤。"""
         mb = self.get_int(GENERAL, "large_files_min_mb", 100)
         return max(0, mb) * 1024 * 1024
+
+    @property
+    def duplicates_min_mb(self):
+        return max(1, self.get_int(GENERAL, "duplicates_min_mb", 1))
+
+    @property
+    def duplicates_min_bytes(self):
+        """重复文件查找的最小体积阈值（字节）。"""
+        return self.duplicates_min_mb * 1024 * 1024
+
+    @property
+    def duplicates_budget_seconds(self):
+        return max(1.0, self.get_float(GENERAL, "duplicates_budget_seconds", 60.0))
+
+    @property
+    def history_max_records(self):
+        return max(1, self.get_int(GENERAL, "history_max_records", 200))
+
+    @property
+    def language(self):
+        value = self.get(GENERAL, "language", "zh_CN")
+        return value if value in ("zh_CN", "en_US") else "zh_CN"
 
     @property
     def log_level(self):

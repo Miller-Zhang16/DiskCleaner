@@ -15,7 +15,9 @@ from tkinter import messagebox, ttk
 from ..core.classify import CATEGORY_COLORS, classify
 from ..core.scanner import list_dir_children, scan_dir_size
 from ..utils.fmt import dir_of, fmt_size
+from ..utils.i18n import tr
 from ..utils.taskrunner import LANE_FAST, LANE_SCAN, PRIORITY_LIST, PRIORITY_SCAN
+from . import theme
 
 
 class BrowseTab(ttk.Frame):
@@ -36,23 +38,21 @@ class BrowseTab(ttk.Frame):
     # ---------------- 构建界面 ----------------
 
     def _build(self):
-        hint = ttk.Frame(self)
-        hint.pack(fill="x", padx=6, pady=(6, 2))
-        ttk.Label(
-            hint, foreground="#555",
-            text="展开目录逐级查看占用；目录大小按需计算（受扫描预算限制，显示“≥”表示估算下界）。"
-                 "右键可打开位置 / 计算大小 / 删除所选。").pack(side="left")
+        hint = ttk.Label(self, style="Muted.TLabel", text=tr("browse.hint"))
+        hint.pack(fill="x", pady=(0, 8), anchor="w")
+        theme.autowrap(hint)
 
-        wrap = ttk.Frame(self)
-        wrap.pack(fill="both", expand=True, padx=6, pady=6)
+        wrap = tk.Frame(self, background=theme.CARD,
+                        highlightbackground=theme.BORDER, highlightthickness=1)
+        wrap.pack(fill="both", expand=True)
 
         cols = ("size", "type", "category")
         self.tree = ttk.Treeview(wrap, columns=cols, show="tree headings",
                                  selectmode="browse")
-        self.tree.heading("#0", text="名称")
-        self.tree.heading("size", text="大小")
-        self.tree.heading("type", text="类型")
-        self.tree.heading("category", text="分类")
+        self.tree.heading("#0", text=tr("browse.col.name"))
+        self.tree.heading("size", text=tr("browse.col.size"))
+        self.tree.heading("type", text=tr("browse.col.type"))
+        self.tree.heading("category", text=tr("browse.col.category"))
         self.tree.column("#0", width=420, anchor="w")
         self.tree.column("size", width=130, anchor="e")
         self.tree.column("type", width=70, anchor="center")
@@ -69,18 +69,18 @@ class BrowseTab(ttk.Frame):
 
         for cat, color in CATEGORY_COLORS.items():
             self.tree.tag_configure("cat_" + cat, background=color)
-        self.tree.tag_configure("link", foreground="#8a6d00")
+        self.tree.tag_configure("link", foreground=theme.WARN)
 
         self.tree.bind("<<TreeviewOpen>>", self._on_open)
         self.tree.bind("<Button-3>", self._on_right_click)
         self.tree.bind("<ButtonRelease-1>", self._on_click)
 
         self.menu = tk.Menu(self, tearoff=0)
-        self.menu.add_command(label="在资源管理器中打开位置", command=self._open_location)
-        self.menu.add_command(label="计算该项大小", command=self._calc_size)
+        self.menu.add_command(label=tr("common.open_location"), command=self._open_location)
+        self.menu.add_command(label=tr("browse.menu.calc"), command=self._calc_size)
         self.menu.add_separator()
-        self.menu.add_command(label="删除此项…", command=self._delete_selected)
-        self.menu.add_command(label="复制完整路径", command=self._copy_path)
+        self.menu.add_command(label=tr("browse.menu.delete"), command=self._delete_selected)
+        self.menu.add_command(label=tr("common.copy_path"), command=self._copy_path)
 
     # ---------------- 载入根节点 ----------------
 
@@ -90,7 +90,7 @@ class BrowseTab(ttk.Frame):
         if self.tree.exists(root_path):
             return
         self.tree.insert("", "end", iid=root_path, text=root_path,
-                         values=("计算中…", "目录", "系统文件"),
+                         values=(tr("browse.calculating"), tr("browse.type.dir"), "系统文件"),
                          tags=("cat_系统文件",), open=False)
         self.node_kind[root_path] = "dir"
         self.node_state[root_path] = "loading"
@@ -141,9 +141,9 @@ class BrowseTab(ttk.Frame):
         for name, full, size, link in files:
             self._insert_entry(parent_iid, name, full, "file", size, link)
         if queued:
-            self.app.set_status("正在计算 %d 个子目录大小…" % queued)
+            self.app.set_status(tr("browse.status.calc", count=queued))
         else:
-            self.app.set_status("目录 %s 读取完成" % parent_iid)
+            self.app.set_status(tr("browse.status.loaded", path=parent_iid))
 
     def _on_size(self, payload):
         iid, size, trunc = payload
@@ -154,7 +154,7 @@ class BrowseTab(ttk.Frame):
             return
         values[0] = fmt_size(size) + (" ≥" if trunc else "")
         self.tree.item(iid, values=values)
-        self.app.set_status("目录大小更新：%s = %s" % (iid, values[0]))
+        self.app.set_status(tr("browse.status.size", path=iid, size=values[0]))
 
     # ---------------- 节点操作 ----------------
 
@@ -162,7 +162,7 @@ class BrowseTab(ttk.Frame):
         # Tcl 字符串不能含 NUL，因此使用合成 iid 而不是拼接路径
         self._ph_seq += 1
         ph = "__placeholder_%d__" % self._ph_seq
-        self.tree.insert(parent_iid, "end", iid=ph, text="正在读取…")
+        self.tree.insert(parent_iid, "end", iid=ph, text=tr("browse.loading"))
 
     def _remove_placeholder(self, parent_iid):
         for child in self.tree.get_children(parent_iid):
@@ -174,7 +174,7 @@ class BrowseTab(ttk.Frame):
             # 重解析点：只展示，不深入、不算大小、不可展开
             size_str = fmt_size(size) if size is not None else "—"
             self.tree.insert(parent_iid, "end", iid=full, text=name,
-                             values=(size_str, "链接", "其他"), tags=("link",))
+                             values=(size_str, tr("browse.type.link"), "其他"), tags=("link",))
             self.node_kind[full] = "link"
             self.node_state[full] = "loaded"
             return
@@ -182,14 +182,14 @@ class BrowseTab(ttk.Frame):
         category = classify(full)
         if kind == "dir":
             self.tree.insert(parent_iid, "end", iid=full, text=name,
-                             values=("计算中…", "目录", category),
+                             values=(tr("browse.calculating"), tr("browse.type.dir"), category),
                              tags=("cat_" + category,))
             self.node_kind[full] = "dir"
             self.node_state[full] = "new"
             self._insert_placeholder(full)
         else:
             self.tree.insert(parent_iid, "end", iid=full, text=name,
-                             values=(fmt_size(size), "文件", category),
+                             values=(fmt_size(size), tr("browse.type.file"), category),
                              tags=("cat_" + category,))
             self.node_kind[full] = "file"
             self.node_state[full] = "loaded"
@@ -225,9 +225,9 @@ class BrowseTab(ttk.Frame):
         if not iid or self.node_kind.get(iid) != "dir":
             return
         values = list(self.tree.item(iid, "values"))
-        if values and values[0] == "计算中…":
+        if values and values[0] == tr("browse.calculating"):
             return  # 已在队列中
-        values[0] = "计算中…"
+        values[0] = tr("browse.calculating")
         self.tree.item(iid, values=values)
         self._submit_size(iid)
 
@@ -249,7 +249,7 @@ class BrowseTab(ttk.Frame):
         try:
             os.startfile(dir_of(path))  # noqa: S606
         except OSError as e:
-            messagebox.showwarning("无法打开", str(e))
+            messagebox.showwarning(tr("common.open_failed"), str(e))
 
     def _copy_path(self):
         path = self._selected_path()
@@ -257,14 +257,14 @@ class BrowseTab(ttk.Frame):
             return
         self.clipboard_clear()
         self.clipboard_append(path)
-        self.app.set_status("已复制路径：%s" % path)
+        self.app.set_status(tr("browse.status.copied", path=path))
 
     def _calc_size(self):
         path = self._selected_path()
         if not path or self.node_kind.get(path) != "dir":
             return
         values = list(self.tree.item(path, "values"))
-        values[0] = "计算中…"
+        values[0] = tr("browse.calculating")
         self.tree.item(path, values=values)
         self._submit_size(path)
 

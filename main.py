@@ -26,6 +26,7 @@ from src.core.runtime import (  # noqa: E402
 from src.core.targets import build_targets  # noqa: E402
 from src.gui.app import CleanupApp  # noqa: E402
 from src.utils.config import Config  # noqa: E402
+from src.utils.i18n import set_language  # noqa: E402
 from src.utils.logger import Logger  # noqa: E402
 
 
@@ -38,6 +39,7 @@ def main():
     # 配置：首次运行自动生成 data/settings.ini 与 data/custom_targets.txt
     config = Config(config_path(), custom_path=custom_targets_path())
     config.ensure_custom_targets_file()
+    set_language(config.language)
 
     # 清理目标：合并内置目标与自定义目录，并同步勾选状态到配置
     targets = build_targets(config)

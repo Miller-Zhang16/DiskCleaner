@@ -24,14 +24,16 @@ from ..core.file_advice import (
 )
 from ..core.scanner import scan_large_files
 from ..utils.fmt import dir_of, fmt_size
+from ..utils.i18n import tr
 from ..utils.taskrunner import LANE_SCAN, PRIORITY_SCAN
+from . import theme
 
 # 结论 → 行背景色
 VERDICT_COLORS = {
-    VERDICT_FORBID: "#fbe0e0",
-    VERDICT_RISKY: "#fdf3d8",
-    VERDICT_SAFE: "#e8f6e8",
-    VERDICT_KEEP: "#f0f0f0",
+    VERDICT_FORBID: theme.DANGER_BG,
+    VERDICT_RISKY: theme.WARN_BG,
+    VERDICT_SAFE: theme.SUCCESS_BG,
+    VERDICT_KEEP: theme.NEUTRAL_BG,
 }
 
 
@@ -50,37 +52,45 @@ class LargeFilesTab(ttk.Frame):
 
     def _build(self):
         bar = ttk.Frame(self)
-        bar.pack(fill="x", padx=6, pady=(6, 2))
-        ttk.Label(bar, text="扫描路径：").pack(side="left")
+        bar.pack(fill="x", pady=(0, 8))
+        ttk.Label(bar, text=tr("lf.path_label")).pack(side="left")
         self.path_var = tk.StringVar(value="C:\\")
-        ttk.Entry(bar, textvariable=self.path_var, width=60).pack(side="left", padx=(0, 6))
-        self.scan_btn = ttk.Button(bar, text="扫描大文件", command=self.on_scan)
+        ttk.Entry(bar, textvariable=self.path_var, width=52).pack(
+            side="left", padx=(0, 8))
+        self.scan_btn = ttk.Button(bar, text=tr("lf.btn.scan"),
+                                   style="Accent.TButton", command=self.on_scan)
         self.scan_btn.pack(side="left")
-        self.stop_btn = ttk.Button(bar, text="停止", command=self.on_stop, state="disabled")
-        self.stop_btn.pack(side="left", padx=(4, 0))
-        ttk.Label(bar, foreground="#888",
-                  text="默认仅显示 ≥ 100 MB 的文件（可在设置页调整）").pack(side="left", padx=12)
+        self.stop_btn = ttk.Button(bar, text=tr("lf.btn.stop"),
+                                   style="Ghost.TButton", command=self.on_stop,
+                                   state="disabled")
+        self.stop_btn.pack(side="left", padx=(6, 0))
+
+        hint = ttk.Label(self, style="Muted.TLabel", text=tr("lf.hint"))
+        hint.pack(fill="x", pady=(0, 4), anchor="w")
+        theme.autowrap(hint)
 
         # 汇总条：按评估结论统计数量与体积
-        self.summary_var = tk.StringVar(value="扫描后这里会给出可删性汇总。")
+        self.summary_var = tk.StringVar(value=tr("lf.summary.initial"))
         ttk.Label(self, textvariable=self.summary_var, anchor="w",
-                  foreground="#333").pack(fill="x", padx=8, pady=(0, 2))
+                  foreground=theme.TEXT, font=theme.font(10, True)).pack(
+            fill="x", pady=(0, 6))
 
-        wrap = ttk.Frame(self)
-        wrap.pack(fill="both", expand=True, padx=6, pady=6)
+        wrap = tk.Frame(self, background=theme.CARD,
+                        highlightbackground=theme.BORDER, highlightthickness=1)
+        wrap.pack(fill="both", expand=True)
 
         cols = ("advice", "size", "dir", "mtime")
         self.tree = ttk.Treeview(wrap, columns=cols, show="tree headings", selectmode="browse")
-        self.tree.heading("#0", text="文件路径")
-        self.tree.heading("advice", text="可删性评估")
-        self.tree.heading("size", text="大小")
-        self.tree.heading("dir", text="所在目录")
-        self.tree.heading("mtime", text="修改时间")
-        self.tree.column("#0", width=380, anchor="w")
-        self.tree.column("advice", width=100, anchor="center")
-        self.tree.column("size", width=100, anchor="e")
-        self.tree.column("dir", width=200, anchor="w")
-        self.tree.column("mtime", width=140, anchor="center")
+        self.tree.heading("#0", text=tr("lf.col.path"))
+        self.tree.heading("advice", text=tr("lf.col.advice"))
+        self.tree.heading("size", text=tr("lf.col.size"))
+        self.tree.heading("dir", text=tr("lf.col.dir"))
+        self.tree.heading("mtime", text=tr("lf.col.mtime"))
+        self.tree.column("#0", width=340, anchor="w")
+        self.tree.column("advice", width=96, anchor="center")
+        self.tree.column("size", width=90, anchor="e")
+        self.tree.column("dir", width=170, anchor="w")
+        self.tree.column("mtime", width=125, anchor="center")
 
         vsb = ttk.Scrollbar(wrap, orient="vertical", command=self.tree.yview)
         hsb = ttk.Scrollbar(wrap, orient="horizontal", command=self.tree.xview)
@@ -98,12 +108,12 @@ class LargeFilesTab(ttk.Frame):
         self.tree.bind("<Double-1>", self._on_double_click)
 
         self.menu = tk.Menu(self, tearoff=0)
-        self.menu.add_command(label="查看评估详情与清理建议", command=self._show_detail)
+        self.menu.add_command(label=tr("lf.menu.detail"), command=self._show_detail)
         self.menu.add_separator()
-        self.menu.add_command(label="在资源管理器中打开位置", command=self._open_location)
-        self.menu.add_command(label="复制完整路径", command=self._copy_path)
+        self.menu.add_command(label=tr("common.open_location"), command=self._open_location)
+        self.menu.add_command(label=tr("common.copy_path"), command=self._copy_path)
         self.menu.add_separator()
-        self._delete_item = self.menu.add_command(label="删除此文件…",
+        self._delete_item = self.menu.add_command(label=tr("lf.menu.delete"),
                                                   command=self._delete_selected)
 
     # ---------------- 扫描 ----------------
@@ -111,10 +121,11 @@ class LargeFilesTab(ttk.Frame):
     def on_scan(self):
         path = self.path_var.get().strip()
         if not path:
-            messagebox.showwarning("路径为空", "请输入要扫描的目录路径。")
+            messagebox.showwarning(tr("lf.msg.empty_path_title"), tr("lf.msg.empty_path"))
             return
         if not os.path.isdir(path):
-            messagebox.showwarning("路径无效", "该目录不存在：\n%s" % path)
+            messagebox.showwarning(tr("lf.msg.invalid_path_title"),
+                                   tr("lf.msg.invalid_path", path=path))
             return
         if self.scanning:
             return
@@ -122,7 +133,7 @@ class LargeFilesTab(ttk.Frame):
         self.scanning = True
         self.scan_btn.state(["disabled"])
         self.stop_btn.state(["!disabled"])
-        self.app.set_status("正在扫描大文件：%s …" % path)
+        self.app.set_status(tr("lf.status.scanning", path=path))
 
         self.runner.reset("large_files")
         top_n = self.app.config.large_files_top_n
@@ -141,7 +152,7 @@ class LargeFilesTab(ttk.Frame):
         if not self.scanning:
             return
         self.runner.reset("large_files")
-        self.app.set_status("已请求停止扫描…")
+        self.app.set_status(tr("lf.status.stop"))
 
     # ---------------- 结果处理 ----------------
 
@@ -162,8 +173,8 @@ class LargeFilesTab(ttk.Frame):
         root = payload["root"]
 
         if not files:
-            self.app.set_status("扫描完成，未发现符合条件的大文件（已遍历 %d 项）" % entries)
-            self.summary_var.set("未发现符合条件的大文件。")
+            self.app.set_status(tr("lf.status.empty", entries=entries))
+            self.summary_var.set(tr("lf.summary.empty"))
             return
 
         # 评估并填充表格
@@ -187,12 +198,13 @@ class LargeFilesTab(ttk.Frame):
         for verdict in (VERDICT_FORBID, VERDICT_RISKY, VERDICT_SAFE, VERDICT_KEEP):
             if verdict in stats:
                 count, total = stats[verdict]
-                parts.append("%s：%d 项 / %s" % (verdict, count, fmt_size(total)))
-        self.summary_var.set("按可删性汇总 —— " + "　".join(parts))
+                parts.append(tr("lf.summary.item", verdict=verdict, count=count,
+                                size=fmt_size(total)))
+        self.summary_var.set(tr("lf.summary.prefix") + "　".join(parts))
 
-        suffix = "（受预算限制，结果可能不完整）" if truncated else ""
-        self.app.set_status("扫描完成：找到 %d 个大文件（已遍历 %d 项）%s"
-                            % (len(files), entries, suffix))
+        suffix = tr("lf.status.trunc_suffix") if truncated else ""
+        self.app.set_status(tr("lf.status.done", count=len(files),
+                               entries=entries, suffix=suffix))
         self.app.logger.info("大文件扫描[%s]完成：%d 个文件，遍历 %d 项%s"
                              % (root, len(files), entries, suffix))
 
@@ -215,7 +227,7 @@ class LargeFilesTab(ttk.Frame):
         # 「禁止删除」项禁用删除菜单
         adv = self.advice.get(iid)
         state = "normal" if (adv and adv.deletable) else "disabled"
-        self.menu.entryconfig("删除此文件…", state=state)
+        self.menu.entryconfig(self._delete_item, state=state)
         self.menu.tk_popup(event.x_root, event.y_root)
 
     def _on_double_click(self, _event):
@@ -228,17 +240,17 @@ class LargeFilesTab(ttk.Frame):
             return
         adv = self.advice.get(path)
         if not adv:
-            messagebox.showinfo("提示", "该项尚未完成评估。")
+            messagebox.showinfo(tr("lf.msg.no_advice_title"), tr("lf.msg.no_advice"))
             return
 
         try:
             size = os.path.getsize(path)
             size_str = fmt_size(size)
         except OSError:
-            size_str = "无法读取"
+            size_str = "—"
 
         win = tk.Toplevel(self)
-        win.title("评估详情 — " + os.path.basename(path))
+        win.title(tr("lf.detail.title", name=os.path.basename(path)))
         win.transient(self.winfo_toplevel())
         win.grab_set()
         win.resizable(True, True)
@@ -248,41 +260,44 @@ class LargeFilesTab(ttk.Frame):
         body.pack(fill="both", expand=True)
 
         ttk.Label(body, text=path, wraplength=600,
-                  font=("Microsoft YaHei UI", 10, "bold")).pack(anchor="w")
-        ttk.Label(body, text="大小：%s" % size_str,
-                  foreground="#555").pack(anchor="w", pady=(2, 10))
+                  font=theme.font(10, True)).pack(anchor="w")
+        ttk.Label(body, text=tr("lf.detail.size", size=size_str),
+                  foreground=theme.MUTED).pack(anchor="w", pady=(2, 10))
 
         # 结论 + 原因
-        ttk.Label(body, text="评估结论", font=("Microsoft YaHei UI", 9, "bold")).pack(anchor="w")
+        ttk.Label(body, text=tr("lf.detail.verdict"),
+                  font=theme.font(9, True)).pack(anchor="w")
         verdict_label = tk.Label(body, text=adv.verdict,
-                                 bg=VERDICT_COLORS.get(adv.verdict, "#f0f0f0"),
-                                 anchor="w", padx=8, pady=4)
+                                 bg=VERDICT_COLORS.get(adv.verdict, theme.NEUTRAL_BG),
+                                 fg=theme.TEXT, anchor="w", padx=8, pady=4)
         verdict_label.pack(fill="x", pady=(2, 8))
 
-        ttk.Label(body, text="原因", font=("Microsoft YaHei UI", 9, "bold")).pack(anchor="w")
+        ttk.Label(body, text=tr("lf.detail.reason"),
+                  font=theme.font(9, True)).pack(anchor="w")
         ttk.Label(body, text=adv.reason, wraplength=600, justify="left").pack(anchor="w", pady=(2, 8))
 
-        ttk.Label(body, text="安全释放方式", font=("Microsoft YaHei UI", 9, "bold")).pack(anchor="w")
+        ttk.Label(body, text=tr("lf.detail.action"),
+                  font=theme.font(9, True)).pack(anchor="w")
         ttk.Label(body, text=adv.action, wraplength=600, justify="left").pack(anchor="w", pady=(2, 8))
 
         # 可选命令（可复制）
         if adv.command:
-            ttk.Label(body, text="参考命令（复制后以管理员身份在终端运行）",
-                      font=("Microsoft YaHei UI", 9, "bold")).pack(anchor="w", pady=(6, 0))
+            ttk.Label(body, text=tr("lf.detail.command"),
+                      font=theme.font(9, True)).pack(anchor="w", pady=(6, 0))
             row = ttk.Frame(body)
             row.pack(fill="x", pady=(2, 0))
             cmd_var = tk.StringVar(value=adv.command)
             cmd_entry = ttk.Entry(row, textvariable=cmd_var, state="readonly")
             cmd_entry.pack(side="left", fill="x", expand=True)
-            ttk.Button(row, text="复制", width=6,
+            ttk.Button(row, text=tr("common.copy"), width=6,
                        command=lambda: self._copy_text(win, adv.command)).pack(side="left", padx=(6, 0))
 
-        ttk.Button(body, text="关闭", command=win.destroy).pack(pady=(14, 0))
+        ttk.Button(body, text=tr("common.close"), command=win.destroy).pack(pady=(14, 0))
 
     def _copy_text(self, win, text):
         self.clipboard_clear()
         self.clipboard_append(text)
-        self.app.set_status("已复制命令：%s" % text)
+        self.app.set_status(tr("lf.status.copied_cmd", cmd=text))
         win.lift()
 
     def _open_location(self):
@@ -292,7 +307,7 @@ class LargeFilesTab(ttk.Frame):
         try:
             os.startfile(dir_of(path))  # noqa: S606
         except OSError as e:
-            messagebox.showwarning("无法打开", str(e))
+            messagebox.showwarning(tr("common.open_failed"), str(e))
 
     def _copy_path(self):
         path = self._selected_path()
@@ -300,7 +315,7 @@ class LargeFilesTab(ttk.Frame):
             return
         self.clipboard_clear()
         self.clipboard_append(path)
-        self.app.set_status("已复制路径：%s" % path)
+        self.app.set_status(tr("lf.status.copied_path", path=path))
 
     def _delete_selected(self):
         path = self._selected_path()
@@ -309,9 +324,9 @@ class LargeFilesTab(ttk.Frame):
         adv = self.advice.get(path)
         if adv and not adv.deletable:
             messagebox.showwarning(
-                "禁止删除",
-                "「%s」属于%s类别，不允许通过本程序直接删除。\n\n%s\n\n%s"
-                % (os.path.basename(path), adv.verdict, adv.reason, adv.action))
+                tr("lf.msg.forbid_title"),
+                tr("lf.msg.forbid", name=os.path.basename(path), verdict=adv.verdict,
+                   reason=adv.reason, action=adv.action))
             return
         self.app.run_delete(path, "file")
 

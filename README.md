@@ -60,6 +60,43 @@ them in a single pass, then reports the actual space freed and any skipped files
 - "Restart as Administrator" elevates via `ShellExecuteW(runas)`. If the user cancels the UAC prompt, the app
   keeps running in normal mode instead of crashing
 
+### 6. Large-File Deletability Assessment
+Every large file found in the **Large Files** tab carries a verdict — **Blocked / Risky / Cleanable / Keep** —
+plus a reason, a safe way to free space, and a copy-ready command. Files marked *Blocked* (e.g. `pagefile.sys`,
+`hiberfil.sys`, `WinSxS`) have direct deletion disabled; double-click a row to see the full assessment.
+
+### 7. Cleanup History and Failure Details
+- Each cleanup is appended to `data/history.jsonl` (capped by `history_max_records`)
+- The result dialog lists every failed item with its path and reason (in use / access denied / missing),
+  and double-clicking a row copies the path
+- **View Cleanup History** (result dialog or Settings) reopens past runs and their failure details
+
+### 8. Directory Migration (copy + junction)
+The **Migrate** tab moves a big folder to another drive and leaves a junction at the original path, so programs
+keep working unchanged. The flow is a three-stage idempotent state machine:
+`copy → verify → delete source → create junction`. It is resumable after an interruption, and undo is allowed
+only while the source data is still intact. Safety checks reject system directories, reparse points inside the
+source, same-drive targets, and insufficient free space. Migration records are persisted in
+`data/migrations.json`.
+
+### 9. Bilingual UI (zh_CN / en_US)
+All interface chrome (tabs, buttons, menus, column headers, dialog titles and messages) is resolved through a
+language pack; switch the language in **Settings → Interface** (restart to apply). Long-form cleanup advice in
+`file_advice` stays in Chinese.
+
+### 10. Duplicate File Finder
+The **Duplicates** tab finds byte-identical files with a three-stage strategy — group by size, compare head/tail
+fingerprints (BLAKE2b), then confirm with full SHA-256 — so a scan never reads a whole file twice. Results are
+grouped, each group keeps its **earliest modified copy**, and "Delete Extra Copies" removes the rest through the
+normal cleanup pipeline (progress, failure details, history). System folders, reparse points, hard links and the
+app's own directory are skipped; the scan respects time and entry budgets and reports when results may be
+incomplete.
+
+### 11. Disk Usage Trend Forecast
+A daily usage snapshot is written to `data/growth.json` (one entry per day, up to 120 entries). The overview card
+shows the average daily growth over the last 30 days and how many days remain until the drive is full. With fewer
+than two days of data it says a trend is still being collected instead of guessing.
+
 ---
 
 ## 📁 Project Structure
@@ -99,15 +136,31 @@ C_improve/
     │   ├── classify.py         # File classification
     │   ├── targets.py          # Cleanup target table and size estimation
     │   ├── cleaner.py          # Deletion executor (whitelist checks / fault tolerance)
-    │   └── recycle.py          # Recycle Bin Shell API wrapper
+    │   ├── recycle.py          # Recycle Bin Shell API wrapper
+    │   ├── file_advice.py      # Large-file deletability assessment and advice
+    │   ├── history.py          # Cleanup history (JSONL, capped records)
+    │   ├── duplicates.py       # Duplicate finder (size → fingerprint → SHA-256)
+    │   ├── growth.py           # Daily usage snapshots and fill-up forecast
+    │   └── migrator.py         # Directory migration state machine + junction handling
     ├── gui/                    # Presentation layer
     │   ├── app.py              # Main window, disk overview, task scheduling
+    │   ├── theme.py            # Shared palette, fonts and card style helpers
     │   ├── browse_tab.py       # Disk browser tab
-    │   └── suggest_tab.py      # Cleanup suggestions tab
+    │   ├── large_files_tab.py  # Large files tab (assessment + advice)
+    │   ├── duplicates_tab.py   # Duplicate finder tab
+    │   ├── suggest_tab.py      # Cleanup suggestions tab
+    │   ├── migrate_tab.py      # Directory migration tab
+    │   ├── settings_tab.py     # Settings tab
+    │   ├── result_dialog.py    # Cleanup result dialog (failure details)
+    │   └── history_dialog.py   # Cleanup history dialog
+    ├── locales/                # UI language packs
+    │   ├── zh_CN.py            # Simplified Chinese
+    │   └── en_US.py            # English
     └── utils/                  # Shared utilities
         ├── fmt.py              # Size formatting, path and file attribute helpers
         ├── logger.py           # Rotating log (file + UI echo)
         ├── config.py           # Configuration I/O
+        ├── i18n.py             # `tr()` lookup with zh_CN fallback
         └── taskrunner.py       # Background scheduler (lanes + priorities + generations)
 ```
 
@@ -132,9 +185,10 @@ DiskCleaner.exe
 │ C: drive: Used ███████░░░░ 312G/500G   Free 188G          │
 │ [Refresh Disk] [Reload Config] [Restart as Administrator] │
 ├──────────────────────────────────────────────────────────┤
-│ [ Disk Browser ] [ Large Files ] [ Cleanup Suggestions ] [ Settings ] │
+│ [Browse] [Large Files] [Duplicates] [Suggestions] [Migrate] [Settings] │
 │   Disk Browser: lazy tree, drill down to inspect usage    │
 │   Large Files: top-N biggest files on the drive           │
+│   Duplicates: find and clean byte-identical copies        │
 │   Suggestions: tick targets + [Apply][Clean Selected]     │
 │   Settings: edit settings.ini from the GUI                │
 ├──────────────────────────────────────────────────────────┤
@@ -164,6 +218,22 @@ DiskCleaner.exe
 | Clean Selected | Run only the currently ticked targets |
 | Re-estimate | Recompute the reclaimable space of every target |
 
+### Migrate Tab Operations
+
+| Action | Description |
+|--------|-------------|
+| Check and Estimate | Validate source/target and estimate the size (no data is moved) |
+| Start Migration | Run copy → verify → delete source → create junction |
+| Stop | Interrupt at a safe boundary; resume later from the record |
+| Resume / Retry | Continue from the last completed stage |
+| Undo Migration | Remove the target copy (only while the source is still intact) |
+| Open Target / Remove Record | Open the target folder / drop the record (data is kept) |
+
+### Cleanup History
+
+Open it from the result dialog or the Settings tab. Double-click a record for details; "Clear History" removes
+all records. The number of kept records is controlled by `history_max_records`.
+
 ---
 
 ## ⚙️ Configuration
@@ -180,6 +250,10 @@ temp_min_age_hours = 24      ; Only clean temp files older than this many hours
 auto_size_limit = 150        ; Max number of subfolders auto-sized when expanding a folder
 large_files_top_n = 200      ; Max number of largest files returned by the big-file scan
 large_files_min_mb = 100     ; Only report files at least this large (MB, 0 = no filter)
+history_max_records = 200    ; Max cleanup history records kept in data/history.jsonl
+duplicates_min_mb = 1        ; Ignore duplicate candidates smaller than this (MB)
+duplicates_budget_seconds = 60 ; Time budget per duplicate scan (s)
+language = zh_CN             ; UI language: zh_CN / en_US (restart required)
 log_level = INFO             ; DEBUG / INFO / WARNING / ERROR
 log_max_bytes = 1048576      ; Max size of one log file before rotation
 log_backup_count = 3         ; Number of rotated logs to keep
@@ -397,7 +471,7 @@ Released under the [MIT License](LICENSE).
 
 ---
 
-*Last updated: 2026-10-22*
+*Last updated: 2026-11-02*
 
 ---
 
@@ -449,6 +523,36 @@ Released under the [MIT License](LICENSE).
 - 普通模式下，需要管理员权限的清理项会置灰并给出提示
 - 点击「以管理员身份重启」通过 `ShellExecuteW(runas)` 触发 UAC；用户取消授权时程序继续以普通模式运行，不会崩溃
 
+### 6. 大文件可删性评估
+「大文件」页为每个文件给出**禁止删除 / 高风险 / 可清理 / 建议保留**结论，并附原因、安全释放方式与
+可一键复制的命令。判定为「禁止删除」的文件（如 `pagefile.sys`、`hiberfil.sys`、`WinSxS`）会禁用直接删除；
+双击条目可查看完整评估。
+
+### 7. 清理历史与失败明细
+- 每次清理写入 `data/history.jsonl`，按 `history_max_records` 上限自动淘汰旧记录
+- 结果对话框逐项列出失败路径与原因（被占用 / 无权限 / 已不存在），双击可复制路径
+- 「查看清理历史」（结果对话框或设置页）可回看历次清理及其失败明细
+
+### 8. 目录迁移（复制 + 目录链接）
+「迁移」页把大目录搬到其他盘，并在原路径建立 junction，程序仍按原路径照常访问。流程为三阶段幂等状态机：
+`复制 → 校验 → 删除源 → 建链接`，中断后可续跑；仅在源数据仍完整时允许撤销。
+安全校验会拒绝系统目录、源目录内的重解析点、同盘目标与空间不足的情况；迁移记录保存在
+`data/migrations.json`。
+
+### 9. 中英双语界面（zh_CN / en_US）
+全部界面元素（标签页、按钮、菜单、列头、对话框标题与提示）均通过语言包解析；在
+**设置 → 界面** 中切换语言（重启后生效）。`file_advice` 的长文建议保持中文。
+
+### 10. 重复文件查找
+「重复文件」页用三层策略找出内容完全相同的文件：先按大小分组，再比较首尾指纹（BLAKE2b），
+最后用 SHA-256 全量确认，因此单个文件不会被重复读取。结果按组展示，每组**保留最早修改的一份**，
+「删除选中组的额外副本」走正常清理流程（进度、失败明细、历史记录一致）。
+扫描会跳过系统关键目录、重解析点、硬链接与程序自身目录，并受时间与条目预算限制，超限时明确提示结果可能不完整。
+
+### 11. 磁盘占用趋势预测
+每天写入一条磁盘占用快照到 `data/growth.json`（同日覆盖，最多 120 条）。概览卡片显示最近 30 天的
+日均增长量，以及按此速度还有多少天写满。数据不足 2 天时只提示「正在记录」，不做推测。
+
 ---
 
 ## 📁 项目结构
@@ -488,15 +592,31 @@ C_improve/
     │   ├── classify.py         # 文件分类
     │   ├── targets.py          # 清理目标表与空间估算
     │   ├── cleaner.py          # 删除执行器（白名单校验 / 容错删除）
-    │   └── recycle.py          # 回收站 Shell API 封装
+    │   ├── recycle.py          # 回收站 Shell API 封装
+    │   ├── file_advice.py      # 大文件可删性评估与清理建议
+    │   ├── history.py          # 清理历史（JSONL，按上限淘汰）
+    │   ├── duplicates.py       # 重复文件查找（大小 → 指纹 → SHA-256）
+    │   ├── growth.py           # 磁盘占用每日快照与写满预测
+    │   └── migrator.py         # 目录迁移状态机 + junction 处理
     ├── gui/                    # 界面层
     │   ├── app.py              # 主窗口、磁盘概览、任务调度
+    │   ├── theme.py            # 统一配色、字体与卡片样式工具
     │   ├── browse_tab.py       # 磁盘浏览页
-    │   └── suggest_tab.py      # 清理建议页
+    │   ├── large_files_tab.py  # 大文件页（可删性评估）
+    │   ├── duplicates_tab.py   # 重复文件页
+    │   ├── suggest_tab.py      # 清理建议页
+    │   ├── migrate_tab.py      # 目录迁移页
+    │   ├── settings_tab.py     # 设置页
+    │   ├── result_dialog.py    # 清理结果对话框（失败明细）
+    │   └── history_dialog.py   # 清理历史对话框
+    ├── locales/                # 界面语言包
+    │   ├── zh_CN.py            # 简体中文
+    │   └── en_US.py            # 英文
     └── utils/                  # 通用工具
         ├── fmt.py              # 体积格式化、路径与文件属性工具
         ├── logger.py           # 滚动日志（文件 + 界面回显）
         ├── config.py           # 配置读写
+        ├── i18n.py             # `tr()` 查表与 zh_CN 回退
         └── taskrunner.py       # 后台任务调度（三通道 + 优先级 + 世代号）
 ```
 
@@ -521,9 +641,10 @@ DiskCleaner.exe
 │ C 盘状态：已用 ███████░░░░ 312G/500G   可用 188G          │
 │ [刷新磁盘信息] [重新加载配置] [以管理员身份重启]           │
 ├──────────────────────────────────────────────────────────┤
-│ [ 磁盘浏览 ] [ 大文件 ] [ 清理建议 ] [ 设置 ]               │
+│ [ 磁盘浏览 ] [ 大文件 ] [ 重复文件 ] [ 清理建议 ] [ 迁移 ] [ 设置 ]        │
 │   磁盘浏览：树形懒加载，逐级展开查看占用                   │
 │   大文件：扫描整盘最大的 N 个文件                          │
+│   重复文件：查找并清理内容完全相同的副本                   │
 │   清理建议：勾选清理项 + [一键采用建议][清理选中项]         │
 │   设置：在界面内编辑 settings.ini 配置                     │
 ├──────────────────────────────────────────────────────────┤
@@ -553,6 +674,22 @@ DiskCleaner.exe
 | 清理选中项 | 只执行当前勾选的项目 |
 | 重新估算 | 重新计算各项可释放空间 |
 
+### 迁移页操作
+
+| 操作 | 说明 |
+|------|------|
+| 检查并计算体积 | 校验源/目标路径并估算体积（不移动任何数据） |
+| 开始迁移 | 复制 → 校验 → 删除源目录 → 建立目录链接 |
+| 停止 | 在安全边界中断，稍后可从迁移记录续跑 |
+| 继续 / 重试 | 从上次完成的阶段继续 |
+| 撤销迁移 | 删除目标副本（仅限源目录尚未删除时） |
+| 打开目标位置 / 从列表移除 | 打开目标目录 / 只删除记录（数据保留） |
+
+### 清理历史
+
+可从结果对话框或设置页打开；双击记录查看详情，「清空历史」删除全部记录。
+保留条数由 `history_max_records` 控制。
+
 ---
 
 ## ⚙️ 配置文件
@@ -569,6 +706,10 @@ temp_min_age_hours = 24      ; 临时文件仅清理该小时数之前的项目
 auto_size_limit = 150        ; 展开目录时自动计算大小的子目录数量上限
 large_files_top_n = 200      ; 大文件扫描返回的结果数上限
 large_files_min_mb = 100     ; 大文件扫描仅统计不小于该 MB 数的文件（0 表示不过滤）
+history_max_records = 200    ; 清理历史保留条数上限（data/history.jsonl）
+duplicates_min_mb = 1        ; 重复文件扫描仅统计不小于该 MB 数的文件
+duplicates_budget_seconds = 60 ; 单次重复文件扫描的时间预算（秒）
+language = zh_CN             ; 界面语言：zh_CN / en_US（重启后生效）
 log_level = INFO             ; DEBUG / INFO / WARNING / ERROR
 log_max_bytes = 1048576      ; 单份日志最大字节数，超出后滚动
 log_backup_count = 3         ; 保留的历史日志份数
@@ -771,4 +912,4 @@ python scripts/release.py --show
 
 ---
 
-*Last updated: 2026-10-22*
+*Last updated: 2026-11-02*
