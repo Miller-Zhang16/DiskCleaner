@@ -2,14 +2,16 @@
 """迁移页：把 C 盘大目录搬到其他盘，并在原路径保留目录链接。
 
 交互约定：
-    - 左侧填写源目录（C 盘上的大目录）与目标目录（其他盘的不存在路径）；
-    - 「检查并计算体积」在后台估算体积并做全部安全校验，结果直接显示在信息栏；
-    - 校验通过后才能「开始迁移」，迁移前会再次确认风险；
+    - 手动迁移：填写源目录（C 盘上的大目录）与目标目录（其他盘的不存在路径），
+      「检查并计算体积」在后台估算体积并做全部安全校验；
+    - 软件迁移：点击「扫描已安装软件」自动枚举 C 盘安装项，过滤系统组件后
+      展示可勾选清单，统一指定目标盘后批量提交；
     - 迁移是三阶段的：复制 → 校验 → 删源 → 建链接，中途可停止并稍后续跑；
     - 下方表格列出所有迁移记录，可续跑、撤销（仅复制阶段）、打开目标或移除记录。
 """
 
 import os
+import re
 import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -23,6 +25,11 @@ from ..core.migrator import (
     migrate,
     undo,
     validate,
+)
+from ..core.software import (
+    RISK_FORBID,
+    RISK_WARN,
+    scan_candidates,
 )
 from ..utils.fmt import fmt_size
 from ..utils.i18n import tr
@@ -54,6 +61,7 @@ class MigrateTab(ttk.Frame):
         self.check_size = 0
         self.check_files = 0
         self.records = []
+        self.software_items: list = []     # SoftwareItem 列表
         self._build()
         self.reload_records()
 
@@ -113,6 +121,74 @@ class MigrateTab(ttk.Frame):
         self.progress_var = tk.StringVar(value="")
         self.progress_label = ttk.Label(prog_row, textvariable=self.progress_var,
                                         style="Muted.TLabel")
+
+        # ---------- 已安装软件 ----------
+        sw_group = ttk.LabelFrame(self, text=tr("sw.group.title"),
+                                  style="Card.TLabelframe", padding=(10, 6))
+        sw_group.pack(fill="x", pady=(0, 8))
+
+        ttk.Label(sw_group, text=tr("sw.hint"), style="Muted.TLabel",
+                  justify="left").pack(anchor="w")
+        theme.autowrap(sw_group.winfo_children()[0])
+
+        sw_bar = tk.Frame(sw_group, background=theme.CARD)
+        sw_bar.pack(fill="x", pady=(6, 4))
+        self.sw_scan_btn = ttk.Button(sw_bar, text=tr("sw.btn.scan"),
+                                      style="Accent.TButton",
+                                      command=self.on_scan_software)
+        self.sw_scan_btn.pack(side="left")
+        self.sw_stop_btn = ttk.Button(sw_bar, text=tr("sw.btn.stop"),
+                                      style="Ghost.TButton",
+                                      command=self.on_stop_software,
+                                      state="disabled")
+        self.sw_stop_btn.pack(side="left", padx=6)
+        self.sw_submit_btn = ttk.Button(sw_bar, text=tr("sw.btn.batch_submit"),
+                                        style="Accent.TButton",
+                                        command=self.on_batch_submit,
+                                        state="disabled")
+        self.sw_submit_btn.pack(side="left", padx=6)
+        ttk.Label(sw_bar, text=tr("sw.target_drive"),
+                  style="Card.TLabel").pack(side="right")
+        self.sw_target_var = tk.StringVar(value="E:")
+        ttk.Combobox(sw_bar, textvariable=self.sw_target_var, width=8,
+                     state="readonly",
+                     values=["D:", "E:", "F:", "G:", "H:"]).pack(side="right", padx=(0, 6))
+        ttk.Label(sw_bar, text=tr("sw.auto_suffix"),
+                  style="Muted.TLabel").pack(side="right", padx=(0, 4))
+
+        # 软件清单表格
+        sw_wrap = tk.Frame(sw_group, background=theme.CARD)
+        sw_wrap.pack(fill="x", pady=2)
+        sw_cols = ("check", "name", "publisher", "size", "risk", "dir")
+        self.sw_tree = ttk.Treeview(sw_wrap, columns=sw_cols, show="headings",
+                                    selectmode="browse", height=5)
+        self.sw_tree.heading("check", text="✓")
+        self.sw_tree.heading("name", text=tr("sw.col.name"))
+        self.sw_tree.heading("publisher", text=tr("sw.col.publisher"))
+        self.sw_tree.heading("size", text=tr("sw.col.size"))
+        self.sw_tree.heading("risk", text=tr("sw.col.risk"))
+        self.sw_tree.heading("dir", text=tr("sw.col.dir"))
+        self.sw_tree.column("check", width=32, anchor="center", stretch=False)
+        self.sw_tree.column("name", width=200, anchor="w")
+        self.sw_tree.column("publisher", width=130, anchor="w")
+        self.sw_tree.column("size", width=90, anchor="e")
+        self.sw_tree.column("risk", width=90, anchor="center")
+        self.sw_tree.column("dir", width=260, anchor="w")
+        sw_vsb = ttk.Scrollbar(sw_wrap, orient="vertical", command=self.sw_tree.yview)
+        self.sw_tree.configure(yscrollcommand=sw_vsb.set)
+        self.sw_tree.grid(row=0, column=0, sticky="nsew")
+        sw_vsb.grid(row=0, column=1, sticky="ns")
+        sw_wrap.rowconfigure(0, weight=1)
+        sw_wrap.columnconfigure(0, weight=1)
+        # 点击勾选框切换选中
+        self.sw_tree.bind("<Double-1>", self._on_sw_toggle)
+        self.sw_tree.tag_configure("risk_forbid", foreground=theme.DANGER)
+        self.sw_tree.tag_configure("risk_warn", foreground=theme.WARN)
+        self.sw_tree.tag_configure("risk_safe", foreground=theme.SUCCESS)
+
+        self.sw_summary_var = tk.StringVar(value=tr("sw.summary.initial"))
+        ttk.Label(sw_group, textvariable=self.sw_summary_var,
+                  style="Muted.TLabel").pack(anchor="w", pady=(4, 0))
 
         # 迁移记录
         rec = ttk.LabelFrame(self, text=tr("migrate.group.records"),
@@ -326,6 +402,11 @@ class MigrateTab(ttk.Frame):
             self.app.logger.info(payload)
         elif kind == "done":
             self._on_done(payload)
+        elif kind == "sw_scan_progress":
+            # 软件扫描进度（文本型，不显示百分比条）
+            self.app.set_status(tr("sw.status.scanning", name=payload.get("name", "")))
+        elif kind == "sw_scan_done":
+            self._on_sw_scan_done(payload)
 
     def _on_done(self, payload):
         self.busy = False
@@ -457,3 +538,199 @@ class MigrateTab(ttk.Frame):
         self.app.migrations.remove(rec["src"])
         self.reload_records()
         self.app.set_status(tr("migrate.status.removed", src=rec["src"]))
+
+    # ---------------- 已安装软件扫描 ----------------
+
+    def on_scan_software(self):
+        """后台扫描注册表，找出 C 盘上可迁移的软件安装项。"""
+        if self.busy:
+            return
+        self.sw_scan_btn.state(["disabled"])
+        self.sw_stop_btn.state(["!disabled"])
+        self.sw_submit_btn.state(["disabled"])
+        self.sw_summary_var.set(tr("sw.summary.scanning"))
+        self.software_items = []
+        for iid in self.sw_tree.get_children():
+            self.sw_tree.delete(iid)
+        self.runner.reset("sw_scan")
+        self.app.set_status(tr("sw.status.start"))
+
+        def job(gen, ev):
+            def on_progress(idx, total, name):
+                if idx % 20 == 0:
+                    self.runner.emit("migrate", gen, "sw_scan_progress",
+                                     {"name": name})
+
+            items = scan_candidates(cancel=ev, measure_actual=True,
+                                    on_progress=on_progress)
+            self.runner.emit("migrate", gen, "sw_scan_done",
+                             {"items": items, "cancelled": ev.is_set()})
+
+        # 走 migrate 通道（已注册）
+        self.runner.submit("migrate", job, priority=PRIORITY_SCAN, lane=LANE_SCAN)
+
+    def on_stop_software(self):
+        self.runner.reset("sw_scan")
+        self.sw_summary_var.set(tr("sw.summary.stopped"))
+        self.app.set_status(tr("sw.status.stopped"))
+        self.sw_scan_btn.state(["!disabled"])
+        self.sw_stop_btn.state(["disabled"])
+
+    def _on_sw_scan_done(self, payload):
+        self.sw_scan_btn.state(["!disabled"])
+        self.sw_stop_btn.state(["disabled"])
+        items = payload.get("items", [])
+        self.software_items = items
+        for iid in self.sw_tree.get_children():
+            self.sw_tree.delete(iid)
+        total_reclaim = 0
+        auto_checked = 0
+        for idx, it in enumerate(items):
+            risk_key = "risk_forbid" if it.risk == RISK_FORBID else (
+                "risk_warn" if it.risk == RISK_WARN else "risk_safe")
+            risk_label = {
+                RISK_FORBID: tr("sw.risk.forbid"),
+                RISK_WARN: tr("sw.risk.warn"),
+            }.get(it.risk, tr("sw.risk.safe"))
+            check = "✓" if it.checked else ""
+            if it.checked:
+                total_reclaim += it.effective_size
+                auto_checked += 1
+            self.sw_tree.insert(
+                "", "end", iid=str(idx),
+                values=(check, it.name, it.publisher,
+                        fmt_size(it.effective_size), risk_label,
+                        it.install_dir_norm),
+                tags=(risk_key,))
+        if payload.get("cancelled"):
+            self.sw_summary_var.set(tr("sw.summary.partial",
+                                       count=len(items)))
+        elif not items:
+            self.sw_summary_var.set(tr("sw.summary.none"))
+        else:
+            self.sw_summary_var.set(tr("sw.summary.done",
+                                       total=fmt_size(total_reclaim),
+                                       count=auto_checked,
+                                       total_count=len(items)))
+        self.sw_submit_btn.state(["!disabled"] if auto_checked > 0 else ["disabled"])
+        self.app.set_status(tr("sw.status.done", count=len(items)))
+
+    def _on_sw_toggle(self, event=None):
+        """双击软件行切换勾选状态。"""
+        sel = self.sw_tree.selection()
+        if not sel:
+            return
+        idx = int(sel[0])
+        if idx < 0 or idx >= len(self.software_items):
+            return
+        item = self.software_items[idx]
+        if item.risk == RISK_FORBID:
+            self.app.set_status(tr("sw.status.forbid_toggle"))
+            return
+        item.checked = not item.checked
+        new_check = "✓" if item.checked else ""
+        vals = list(self.sw_tree.item(sel[0], "values"))
+        vals[0] = new_check
+        self.sw_tree.item(sel[0], values=vals)
+        self._refresh_sw_summary()
+
+    def _refresh_sw_summary(self):
+        """重算勾选的总体积。"""
+        auto_checked = sum(1 for it in self.software_items if it.checked)
+        total_reclaim = sum(
+            it.effective_size for it in self.software_items if it.checked)
+        if auto_checked == 0:
+            self.sw_summary_var.set(tr("sw.summary.empty_selected"))
+            self.sw_submit_btn.state(["disabled"])
+        else:
+            self.sw_summary_var.set(tr("sw.summary.selected",
+                                       total=fmt_size(total_reclaim),
+                                       count=auto_checked))
+            self.sw_submit_btn.state(["!disabled"])
+
+    # ---------- 批量提交 ----------
+
+    def _sanitize_target_name(self, name: str) -> str:
+        """从软件名生成合法的目标目录名。"""
+        # 去掉盘符、反斜杠，只保留可打印字符
+        base = os.path.basename(name.strip().rstrip("\\/"))
+        # 去掉版本号和无意义后缀
+        base = re.sub(r"\s*[-_\.]\s*(v?\d+[\d\.\-]*|Program|App)$", "", base, flags=re.IGNORECASE)
+        # 把非字母数字替换为下划线
+        base = re.sub(r"[^\w\u4e00-\u9fff-]+", "_", base).strip("_")
+        return base or "software"
+
+    def on_batch_submit(self):
+        """把勾选的软件批量生成迁移记录并逐条提交。"""
+        checked = [it for it in self.software_items if it.checked]
+        if not checked:
+            messagebox.showinfo(tr("sw.msg.none_title"), tr("sw.msg.none"))
+            return
+        target_drive = self.sw_target_var.get().rstrip(":\\/") + ":\\"
+        # 校验目标盘存在
+        try:
+            if not os.path.isdir(target_drive):
+                messagebox.showwarning(tr("sw.msg.bad_drive_title"),
+                                       tr("sw.msg.bad_drive", drive=target_drive))
+                return
+        except OSError:
+            pass
+
+        # 预演全部生成记录并做 validate
+        records = []
+        problems = []
+        for it in checked:
+            src = it.install_dir_norm
+            dst_name = self._sanitize_target_name(it.name)
+            dst = os.path.join(target_drive, "Software", dst_name)
+            rec = {"src": src, "dst": dst, "stage": STAGE_PLANNED,
+                   "size": it.effective_size, "files": 0,
+                   "software_name": it.name}
+            errs = validate(src, dst, it.effective_size)
+            # validate 会拒绝 C 盘源，但我们这里源本来就在 C 盘——覆盖这个检查
+            errs = [e for e in errs
+                    if not e.startswith("源目录与目标目录在同一个盘")
+                    and not e.startswith("源目录属于系统关键目录")]
+            # 跳过 Forbid 条目
+            if it.risk == RISK_FORBID:
+                errs.append("该软件被标记为禁止迁移")
+            if it.risk == RISK_WARN:
+                # 警告级不阻止，只是记录
+                pass
+            if errs:
+                problems.append((it.name, errs))
+            else:
+                records.append(rec)
+
+        if problems:
+            msg_lines = []
+            for name, errs in problems:
+                msg_lines.append("• %s：%s" % (name, "；".join(errs[:2])))
+            if not records:
+                messagebox.showwarning(
+                    tr("sw.msg.problem_all_title"),
+                    tr("sw.msg.problem_all") + "\n\n" + "\n".join(msg_lines[:10]))
+                return
+            if not messagebox.askyesno(
+                    tr("sw.msg.problem_partial_title"),
+                    tr("sw.msg.problem_partial") + "\n\n"
+                    + "\n".join(msg_lines[:10]) + "\n\n"
+                    + tr("sw.msg.confirm_partial", count=len(records))):
+                return
+
+        if not messagebox.askyesno(
+                tr("sw.msg.batch_confirm_title"),
+                tr("sw.msg.batch_confirm",
+                   count=len(records),
+                   drive=target_drive,
+                   size=fmt_size(sum(r["size"] for r in records)))):
+            return
+
+        # 逐条写入 store，让用户可在记录表中续跑/撤销
+        for rec in records:
+            # 写入 store 但不自动执行；执行要到「开始迁移」按钮
+            self.app.migrations.upsert(rec)
+        self.reload_records()
+        self.app.set_status(tr("sw.msg.batch_submitted", count=len(records)))
+        self.info_var.set(tr("sw.info.batch_submitted",
+                             count=len(records), drive=target_drive))

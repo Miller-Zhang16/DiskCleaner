@@ -297,6 +297,57 @@ MESSAGES = {
     "history.detail_results": "Per-item details",
     "history.detail_failures": "Failure details (first 50 only)",
 
+    # Software migration
+    "sw.group.title": "📦 Installed Software Migration",
+    "sw.hint": "Enumerates registered installations on drive C and filters out system components "
+               "to produce a migration candidate list. Tick the items you want to move, pick a "
+               "target drive, and generate migration records that you run one by one.",
+    "sw.btn.scan": "Scan Installed Software",
+    "sw.btn.stop": "Stop",
+    "sw.btn.batch_submit": "Submit Migration Records",
+    "sw.target_drive": "Target:",
+    "sw.auto_suffix": "(auto → Software\\<name>)",
+    "sw.col.name": "Software",
+    "sw.col.publisher": "Publisher",
+    "sw.col.size": "Size",
+    "sw.col.risk": "Risk",
+    "sw.col.dir": "Install Dir",
+    "sw.risk.forbid": "Forbid",
+    "sw.risk.warn": "Caution",
+    "sw.risk.safe": "Safe",
+    "sw.summary.initial": "Click “Scan Installed Software” to begin.",
+    "sw.summary.scanning": "Scanning registry entries and measuring sizes…",
+    "sw.summary.stopped": "Scan stopped; results may be incomplete.",
+    "sw.summary.none": "No migratable software found (all are system components or too small).",
+    "sw.summary.partial": "Stopped: {count} candidates collected so far.",
+    "sw.summary.done": "{total_count} items; {count} auto-checked, about {total} reclaimable.",
+    "sw.summary.selected": "{count} ticked, about {total} reclaimable.",
+    "sw.summary.empty_selected": "No software selected.",
+    "sw.status.start": "Reading registry entries…",
+    "sw.status.scanning": "Reading {name}",
+    "sw.status.stopped": "Scan stopped",
+    "sw.status.done": "Scan complete: {count} items.",
+    "sw.status.forbid_toggle": "Forbidden system components cannot be toggled.",
+    "sw.msg.none_title": "Nothing selected",
+    "sw.msg.none": "Tick at least one software item first.",
+    "sw.msg.bad_drive_title": "Target drive unavailable",
+    "sw.msg.bad_drive": "Target drive {drive} does not exist or cannot be accessed.",
+    "sw.msg.problem_all_title": "Nothing passed validation",
+    "sw.msg.problem_all": "The following items cannot be migrated (e.g. target exists / size exceeds free space):",
+    "sw.msg.problem_partial_title": "Some items failed validation",
+    "sw.msg.problem_partial": "The following items will be skipped:",
+    "sw.msg.confirm_partial": "Continue with the remaining {count} items?",
+    "sw.msg.batch_confirm_title": "Confirm batch migration",
+    "sw.msg.batch_confirm": "About to move {count} software packages to {drive}Software\\, "
+                           "total size about {size}.\n\n"
+                           "Flow: copy to target → verify → delete source on C → create junction.\n"
+                           "After migration the software still opens from the original path, "
+                           "but data lives on the other drive.\n\n"
+                           "Close all software you plan to migrate before continuing.",
+    "sw.msg.batch_submitted": "{count} migration records submitted; run them one by one below.",
+    "sw.info.batch_submitted": "{count} records queued (target {drive}). Select one below and "
+                               "click “Resume / Retry” to start execution.",
+
     # Settings tab
     "settings.group.scan": "Scan",
     "settings.group.clean": "Cleanup",

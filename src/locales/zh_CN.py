@@ -291,6 +291,55 @@ MESSAGES = {
     "history.detail_results": "各清理项明细",
     "history.detail_failures": "失败明细（仅保留前 50 条）",
 
+    # 软件迁移
+    "sw.group.title": "📦 已安装软件迁移",
+    "sw.hint": "自动枚举 C 盘上登记过的软件安装目录，过滤系统组件后展示可迁移清单。"
+               "勾选要迁移的项，指定目标盘后批量生成迁移记录，逐条续跑。",
+    "sw.btn.scan": "扫描已安装软件",
+    "sw.btn.stop": "停止扫描",
+    "sw.btn.batch_submit": "批量提交迁移",
+    "sw.target_drive": "目标盘：",
+    "sw.auto_suffix": "（自动追加 Software\\软件名）",
+    "sw.col.name": "软件名",
+    "sw.col.publisher": "发行商",
+    "sw.col.size": "体积",
+    "sw.col.risk": "风险",
+    "sw.col.dir": "安装目录",
+    "sw.risk.forbid": "禁止",
+    "sw.risk.warn": "谨慎",
+    "sw.risk.safe": "可迁移",
+    "sw.summary.initial": "点击「扫描已安装软件」开始。",
+    "sw.summary.scanning": "正在扫描注册表并计算体积…",
+    "sw.summary.stopped": "已停止扫描，结果可能不完整。",
+    "sw.summary.none": "未找到可迁移的软件安装项（全部为系统组件或体积过小）。",
+    "sw.summary.partial": "已停止，当前找到 {count} 个候选。",
+    "sw.summary.done": "共 {total_count} 项，默认勾选 {count} 项，预计可释放 {total}。",
+    "sw.summary.selected": "已勾选 {count} 项，可释放 {total}。",
+    "sw.summary.empty_selected": "未勾选任何软件。",
+    "sw.status.start": "开始扫描注册表…",
+    "sw.status.scanning": "正在读取 {name}",
+    "sw.status.stopped": "已停止扫描",
+    "sw.status.done": "扫描完成，共 {count} 项。",
+    "sw.status.forbid_toggle": "禁止迁移的系统组件不能勾选。",
+    "sw.msg.none_title": "未选择",
+    "sw.msg.none": "请先在清单中勾选要迁移的软件。",
+    "sw.msg.bad_drive_title": "目标盘不可用",
+    "sw.msg.bad_drive": "目标盘 {drive} 不存在或无法访问。",
+    "sw.msg.problem_all_title": "全部校验未通过",
+    "sw.msg.problem_all": "以下软件无法迁移，可能原因：目标目录已存在、体积过大等：",
+    "sw.msg.problem_partial_title": "部分校验未通过",
+    "sw.msg.problem_partial": "以下软件校验未通过，将被跳过：",
+    "sw.msg.confirm_partial": "确定继续迁移剩余的 {count} 项吗？",
+    "sw.msg.batch_confirm_title": "确认批量迁移",
+    "sw.msg.batch_confirm": "即将把以下 {count} 个软件迁移到 {drive}Software\\，"
+                           "总体积约 {size}。\n\n"
+                           "流程：复制到目标盘 → 校验 → 删除 C 盘源目录 → 原路径建 Junction。\n"
+                           "迁移后软件仍可从原路径访问，但数据已落在其他盘。\n\n"
+                           "建议先关闭所有待迁移软件。确定继续吗？",
+    "sw.msg.batch_submitted": "已提交 {count} 条迁移记录，到下方「迁移记录」中逐条执行。",
+    "sw.info.batch_submitted": "已生成 {count} 条迁移记录（目标盘 {drive}），"
+                               "在下方记录中选择后点击「继续/重试」开始执行。",
+
     # 设置页
     "settings.group.scan": "扫描",
     "settings.group.clean": "清理",
