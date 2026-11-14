@@ -5,7 +5,9 @@
     - 输入扫描路径、选择最小体积阈值后点击「查找重复文件」；
     - 后台遍历采用「大小预筛 → 轻量指纹 → SHA-256 确认」，可随时停止；
     - 表格按分组展示，每组默认保留「最早修改」的那一份，其余标记为「删除」；
-    - 选中分组后点击「删除选中组的额外副本」，二次确认后批量删除；
+    - 「一键选择」只做勾选，不会立即删除：把所有多余副本打上勾，
+      用户确认后再点「删除已选副本」，避免误以为会全部删掉；
+    - 也可单击勾选列或按空格键逐个勾选，组标题行可整组勾选；
     - 删除完成后自动从表格中移除已删除的文件，失败项在结果对话框中逐项列出。
 """
 
@@ -31,6 +33,7 @@ class DuplicatesTab(ttk.Frame):
         self.app = app
         self.scanning = False
         self.groups = []
+        self.selected = set()   # 已勾选、待删除的副本路径
         self._build()
 
     # ---------------- 构建界面 ----------------
@@ -66,26 +69,34 @@ class DuplicatesTab(ttk.Frame):
                   foreground=theme.TEXT, font=theme.font(10, True)).pack(
             side="left", fill="x", expand=True)
         self.clean_btn = ttk.Button(head, text=tr("dup.btn.clean"),
-                                    style="Accent.TButton", command=self.on_clean)
+                                    style="Accent.TButton", command=self.on_clean,
+                                    state="disabled")
         self.clean_btn.pack(side="right")
+        self.select_all_btn = ttk.Button(head, text=tr("dup.btn.select_all"),
+                                         style="Ghost.TButton",
+                                         command=self.on_select_all,
+                                         state="disabled")
+        self.select_all_btn.pack(side="right", padx=(0, 6))
 
         wrap = tk.Frame(self, background=theme.CARD,
                         highlightbackground=theme.BORDER, highlightthickness=1)
         wrap.pack(fill="both", expand=True)
 
-        cols = ("size", "count", "reclaim", "keep")
+        cols = ("check", "size", "count", "reclaim", "keep")
         self.tree = ttk.Treeview(wrap, columns=cols, show="tree headings",
                                  selectmode="browse")
         self.tree.heading("#0", text=tr("dup.col.name"))
+        self.tree.heading("check", text=tr("dup.col.check"))
         self.tree.heading("size", text=tr("dup.col.size"))
         self.tree.heading("count", text=tr("dup.col.count"))
         self.tree.heading("reclaim", text=tr("dup.col.reclaim"))
         self.tree.heading("keep", text=tr("dup.col.keep"))
-        self.tree.column("#0", width=540, anchor="w")
-        self.tree.column("size", width=100, anchor="e")
-        self.tree.column("count", width=70, anchor="center")
-        self.tree.column("reclaim", width=110, anchor="e")
-        self.tree.column("keep", width=110, anchor="w")
+        self.tree.column("#0", width=320, anchor="w", minwidth=200)
+        self.tree.column("check", width=56, anchor="center", stretch=False)
+        self.tree.column("size", width=90, anchor="e")
+        self.tree.column("count", width=60, anchor="center")
+        self.tree.column("reclaim", width=95, anchor="e")
+        self.tree.column("keep", width=90, anchor="w")
 
         vsb = ttk.Scrollbar(wrap, orient="vertical", command=self.tree.yview)
         hsb = ttk.Scrollbar(wrap, orient="horizontal", command=self.tree.xview)
@@ -99,7 +110,11 @@ class DuplicatesTab(ttk.Frame):
         self.tree.tag_configure("group", background=theme.NEUTRAL_BG,
                                 font=theme.font(10, True))
         self.tree.tag_configure("keep", background=theme.SUCCESS_BG)
-        self.tree.tag_configure("delete", background=theme.WARN_BG)
+        self.tree.tag_configure("delete", background=theme.CARD)
+        self.tree.tag_configure("delete_sel", background=theme.WARN_BG)
+        # 单击勾选列切换；空格键切换当前行；组标题行一次勾选整组
+        self.tree.bind("<Button-1>", self._on_click, add="+")
+        self.tree.bind("<space>", self._on_space)
         self.tree.bind("<Double-1>", self._on_double_click)
         self.tree.bind("<Button-3>", self._on_right_click)
 
@@ -131,10 +146,13 @@ class DuplicatesTab(ttk.Frame):
         self.scanning = True
         self._clear_tree()
         self.groups = []
+        self.selected.clear()
+        self._sync_buttons()
         self.summary_var.set(tr("dup.status.scanning", path=path, entries=0, candidates=0))
         self.scan_btn.state(["disabled"])
         self.stop_btn.state(["!disabled"])
-        self.app.set_status(tr("dup.status.scanning", path=path, entries=0, candidates=0))
+        self.app.begin_progress(tr("dup.status.scanning", path=path,
+                                   entries=0, candidates=0))
 
         self.runner.reset("duplicates")
         min_bytes = self._min_bytes()
@@ -159,6 +177,10 @@ class DuplicatesTab(ttk.Frame):
         if not self.scanning:
             return
         self.runner.reset("duplicates")
+        self.scanning = False
+        self.scan_btn.state(["!disabled"])
+        self.stop_btn.state(["disabled"])
+        self.app.end_progress()
         self.app.set_status(tr("dup.status.stop"))
 
     # ---------------- 结果处理 ----------------
@@ -177,9 +199,12 @@ class DuplicatesTab(ttk.Frame):
         self.scanning = False
         self.scan_btn.state(["!disabled"])
         self.stop_btn.state(["disabled"])
+        self.app.end_progress()
         self.groups = payload["groups"]
+        self.selected.clear()
         self._fill_tree()
         self._update_summary()
+        self._sync_buttons()
 
         total = self._total_reclaimable(self.groups)
         suffix = tr("dup.status.trunc") if payload["truncated"] else ""
@@ -201,50 +226,157 @@ class DuplicatesTab(ttk.Frame):
         for iid in self.tree.get_children():
             self.tree.delete(iid)
 
+    @staticmethod
+    def _extras(group):
+        """分组中除保留项外的全部副本。"""
+        return [p for p in group["files"] if p != group["keep"]]
+
+    def _check_glyph(self, path, group):
+        if path == group["keep"]:
+            return "—"
+        return "☑" if path in self.selected else "☐"
+
+    def _row_tags(self, path, group):
+        """保留项标绿，已勾选的副本标黄，未勾选的副本保持普通底色。"""
+        if path == group["keep"]:
+            return ("keep",)
+        return ("delete_sel",) if path in self.selected else ("delete",)
+
+    def _group_glyph(self, group):
+        extras = self._extras(group)
+        if extras and all(p in self.selected for p in extras):
+            return "☑"
+        return "☐"
+
+    @staticmethod
+    def _path_size(paths, groups):
+        """按分组体积统计一组路径的合计大小。"""
+        sizes = {p: g["size"] for g in groups for p in g["files"]}
+        return sum(sizes.get(p, 0) for p in paths)
+
     def _fill_tree(self):
         self._clear_tree()
         for idx, group in enumerate(self.groups):
             gid = "g:%d" % idx
             name = tr("dup.group", count=len(group["files"]))
             self.tree.insert("", "end", iid=gid, text=name, open=True,
-                             values=(fmt_size(group["size"]), len(group["files"]),
+                             values=(self._group_glyph(group),
+                                     fmt_size(group["size"]), len(group["files"]),
                                      fmt_size(group["size"] * (len(group["files"]) - 1)),
                                      os.path.basename(group["keep"])),
                              tags=("group",))
             for path in group["files"]:
                 keep = path == group["keep"]
                 self.tree.insert(gid, "end", iid=path, text=path,
-                                 values=(fmt_size(group["size"]), "", "",
+                                 values=(self._check_glyph(path, group),
+                                         fmt_size(group["size"]), "", "",
                                          tr("dup.child.keep") if keep else tr("dup.child.delete")),
-                                 tags=("keep" if keep else "delete",))
+                                 tags=self._row_tags(path, group))
+
+    def _refresh_check(self, iid):
+        """只刷新一行的勾选状态，避免重建整棵树。"""
+        if iid.startswith("g:"):
+            group = self.groups[int(iid[2:])]
+            self.tree.set(iid, "check", self._group_glyph(group))
+            return
+        parent = self.tree.parent(iid)
+        if not parent.startswith("g:"):
+            return
+        group = self.groups[int(parent[2:])]
+        self.tree.set(iid, "check", self._check_glyph(iid, group))
+        self.tree.item(iid, tags=self._row_tags(iid, group))
+        self.tree.set(parent, "check", self._group_glyph(group))
 
     def _update_summary(self):
         if not self.groups:
             self.summary_var.set(tr("dup.summary.empty"))
             return
         total = self._total_reclaimable(self.groups)
-        self.summary_var.set(tr("dup.summary.prefix", groups=len(self.groups),
-                                size=fmt_size(total)))
+        text = tr("dup.summary.prefix", groups=len(self.groups),
+                  size=fmt_size(total))
+        if self.selected:
+            text += " " + tr("dup.summary.selected", count=len(self.selected),
+                             size=fmt_size(self._path_size(self.selected, self.groups)))
+        self.summary_var.set(text)
+
+    def _sync_buttons(self):
+        """按当前分组与勾选状态启用/禁用按钮。"""
+        self.select_all_btn.state(["!disabled"] if self.groups else ["disabled"])
+        self.clean_btn.state(["!disabled"] if self.selected else ["disabled"])
 
     # ---------------- 交互 ----------------
 
-    def _selected_index(self):
-        sel = self.tree.selection()
-        if not sel:
-            return None
-        iid = sel[0]
+    def _toggle(self, iid):
+        if not iid:
+            return
         if iid.startswith("g:"):
             try:
-                return int(iid[2:])
-            except ValueError:
-                return None
+                group = self.groups[int(iid[2:])]
+            except (ValueError, IndexError):
+                return
+            extras = self._extras(group)
+            if extras and all(p in self.selected for p in extras):
+                self.selected.difference_update(extras)
+            else:
+                self.selected.update(extras)
+            self.tree.set(iid, "check", self._group_glyph(group))
+            for path in extras:
+                if self.tree.exists(path):
+                    self.tree.set(path, "check", self._check_glyph(path, group))
+                    self.tree.item(path, tags=self._row_tags(path, group))
+            self._after_selection_change()
+            return
+
         parent = self.tree.parent(iid)
-        if parent.startswith("g:"):
-            try:
-                return int(parent[2:])
-            except ValueError:
-                return None
-        return None
+        if not parent.startswith("g:"):
+            return
+        try:
+            group = self.groups[int(parent[2:])]
+        except (ValueError, IndexError):
+            return
+        if iid == group["keep"]:
+            self.app.set_status(tr("dup.status.keep_locked"))
+            return
+        if iid in self.selected:
+            self.selected.discard(iid)
+        else:
+            self.selected.add(iid)
+        self._refresh_check(iid)
+        self._after_selection_change()
+
+    def _after_selection_change(self):
+        self._sync_buttons()
+        self._update_summary()
+
+    def _on_click(self, event):
+        # 仅勾选列响应单击，其余列保持原有的选中/双击行为
+        if self.tree.identify_column(event.x) != "#1":
+            return
+        iid = self.tree.identify_row(event.y)
+        self._toggle(iid)
+
+    def _on_space(self, _event=None):
+        self._toggle(self.tree.focus())
+        return "break"
+
+    def on_select_all(self):
+        """一键选择：勾选所有分组的多余副本（不会立即删除）。"""
+        if not self.groups:
+            messagebox.showinfo(tr("dup.msg.none_title"), tr("dup.msg.no_result"))
+            return
+        extras = [p for g in self.groups for p in self._extras(g)]
+        if not extras:
+            return
+        if all(p in self.selected for p in extras):
+            self.selected.clear()
+        else:
+            self.selected = set(extras)
+        for gid in self.tree.get_children():
+            self._refresh_check(gid)
+            for child in self.tree.get_children(gid):
+                self._refresh_check(child)
+        self._after_selection_change()
+        self.app.set_status(tr("dup.status.selected", count=len(self.selected)))
 
     def _on_double_click(self, _event):
         iid = self.tree.focus()
@@ -279,15 +411,12 @@ class DuplicatesTab(ttk.Frame):
     # ---------------- 清理 ----------------
 
     def on_clean(self):
-        idx = self._selected_index()
-        if idx is None or idx >= len(self.groups):
-            messagebox.showinfo(tr("dup.msg.none_title"), tr("dup.msg.none"))
-            return
-        group = self.groups[idx]
-        paths = [p for p in group["files"] if p != group["keep"]]
+        """删除已勾选的副本（需先通过「一键选择」或逐行勾选）。"""
+        paths = sorted(self.selected)
         if not paths:
+            messagebox.showinfo(tr("dup.msg.none_title"), tr("dup.msg.none_selected"))
             return
-        size = group["size"] * len(paths)
+        size = self._path_size(paths, self.groups)
         if not messagebox.askyesno(
                 tr("dup.msg.confirm_title"),
                 tr("dup.msg.confirm", count=len(paths), size=fmt_size(size))):
@@ -306,5 +435,9 @@ class DuplicatesTab(ttk.Frame):
             if group["keep"] in gone and group["files"]:
                 group["keep"] = keep_path(group["files"])
         self.groups = [g for g in self.groups if len(g["files"]) >= 2]
+        self.selected -= gone
+        self.selected = {p for p in self.selected
+                         if any(p in g["files"] for g in self.groups)}
         self._fill_tree()
         self._update_summary()
+        self._sync_buttons()

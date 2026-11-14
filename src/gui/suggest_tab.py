@@ -19,6 +19,7 @@ class SuggestTab(ttk.Frame):
         self.app = app
         self.targets = targets
         self.index = {}   # iid -> target 下标
+        self._estimated = 0   # 已完成的估算项数
 
         self._build()
 
@@ -137,8 +138,14 @@ class SuggestTab(ttk.Frame):
             t["_size"] = None
             t["_trunc"] = False
         self.refresh_rows()
-        self.app.set_status(tr("suggest.status.estimating"))
-        for idx in range(len(self.targets)):
+        self._estimated = 0
+        total = len(self.targets)
+        if total:
+            self.app.begin_progress(tr("suggest.status.estimating"),
+                                    maximum=total, value=0)
+        else:
+            self.app.end_progress()
+        for idx in range(total):
             self.runner.submit("suggest", lambda g, ev, i=idx: self._job_estimate(g, ev, i))
 
     def _job_estimate(self, gen, ev, idx):
@@ -157,6 +164,15 @@ class SuggestTab(ttk.Frame):
             iid = "t%d" % idx
             if iid in self.index:
                 self.tree.item(iid, values=self._values(t))
+            self._estimated += 1
+            total = len(self.targets)
+            if self._estimated >= total:
+                self.app.end_progress()
+                self.app.set_status(tr("suggest.status.estimated"))
+            else:
+                self.app.update_progress(self._estimated, total,
+                                         text=tr("suggest.status.progress",
+                                                 done=self._estimated, total=total))
         elif kind == "log":
             self.app.logger.warning(payload)
 

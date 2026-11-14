@@ -133,7 +133,7 @@ class LargeFilesTab(ttk.Frame):
         self.scanning = True
         self.scan_btn.state(["disabled"])
         self.stop_btn.state(["!disabled"])
-        self.app.set_status(tr("lf.status.scanning", path=path))
+        self.app.begin_progress(tr("lf.status.scanning", path=path))
 
         self.runner.reset("large_files")
         top_n = self.app.config.large_files_top_n
@@ -142,7 +142,12 @@ class LargeFilesTab(ttk.Frame):
         budget_e = self.app.config.scan_budget_entries
 
         def job(gen, ev, p=path, tn=top_n, ms=min_size, bs=budget_s, be=budget_e):
-            files, trunc, entries = scan_large_files(p, tn, bs, be, ev, ms)
+            def on_progress(entries, current):
+                self.runner.emit("large_files", gen, "progress", {
+                    "entries": entries, "current": current, "path": p})
+
+            files, trunc, entries = scan_large_files(p, tn, bs, be, ev, ms,
+                                                     progress=on_progress)
             self.runner.emit("large_files", gen, "done", {
                 "files": files, "truncated": trunc, "entries": entries, "root": p})
 
@@ -152,6 +157,10 @@ class LargeFilesTab(ttk.Frame):
         if not self.scanning:
             return
         self.runner.reset("large_files")
+        self.scanning = False
+        self.scan_btn.state(["!disabled"])
+        self.stop_btn.state(["disabled"])
+        self.app.end_progress()
         self.app.set_status(tr("lf.status.stop"))
 
     # ---------------- 结果处理 ----------------
@@ -159,6 +168,10 @@ class LargeFilesTab(ttk.Frame):
     def handle(self, kind, payload):
         if kind == "done":
             self._on_done(payload)
+        elif kind == "progress":
+            self.app.update_progress(
+                text=tr("lf.status.progress", entries=payload["entries"],
+                        current=os.path.basename(payload["current"])))
         elif kind == "log":
             self.app.logger.warning(payload)
 
@@ -166,6 +179,7 @@ class LargeFilesTab(ttk.Frame):
         self.scanning = False
         self.scan_btn.state(["!disabled"])
         self.stop_btn.state(["disabled"])
+        self.app.end_progress()
 
         files = payload["files"]
         truncated = payload["truncated"]

@@ -54,6 +54,8 @@ class CleanupApp:
         self.runner.register("suggest", self.suggest_tab.handle, lane=LANE_BATCH)
         self.runner.register("clean", self.handle_clean, lane=LANE_BATCH)
         self.runner.register("migrate", self.migrate_tab.handle, lane=LANE_BATCH)
+        # 已安装软件扫描独立成通道，避免与正在执行的目录迁移互相取消
+        self.runner.register("sw_scan", self.migrate_tab.handle, lane=LANE_SCAN)
 
         logger.set_ui_sink(self.log_line)
         logger.info("程序启动完成。版本 v%s，当前权限：%s"
@@ -275,7 +277,7 @@ class CleanupApp:
         bar = tk.Frame(wrap, background=theme.BG)
         bar.pack(fill="x", pady=(7, 0))
 
-        self.progress = ttk.Progressbar(bar, mode="indeterminate", length=130)
+        self.progress = ttk.Progressbar(bar, mode="indeterminate", length=150)
         self.status = ttk.Label(bar, text=tr("app.status.ready"),
                                 style="Muted.TLabel", anchor="w")
         self.status.pack(side="left", fill="x", expand=True, padx=10)
@@ -581,13 +583,52 @@ class CleanupApp:
 
     def begin_busy(self):
         self.running = True
-        self.progress.pack(side="left", before=self.status)
-        self.progress.start(60)
+        self.begin_progress()
 
     def end_busy(self):
         self.running = False
+        self.end_progress()
+
+    def begin_progress(self, text=None, maximum=None, value=0):
+        """在状态栏显示进度条。
+
+        ``maximum`` 为空时显示不确定动画（适合无法预估总量的扫描）；
+        给出总量时切换为按比例推进的确定进度条。
+        """
+        self._show_progress()
+        if maximum:
+            self.progress.stop()
+            self.progress.configure(mode="determinate",
+                                    maximum=max(1, int(maximum)),
+                                    value=min(value, maximum))
+        else:
+            self.progress.configure(mode="indeterminate")
+            self.progress.start(60)
+        if text:
+            self.set_status(text)
+
+    def update_progress(self, value=None, maximum=None, text=None):
+        """推进状态栏进度条；未显示时会自动显示。"""
+        self._show_progress()
+        if maximum:
+            self.progress.stop()
+            self.progress.configure(mode="determinate",
+                                    maximum=max(1, int(maximum)))
+        if value is not None:
+            try:
+                self.progress["value"] = max(0, value)
+            except tk.TclError:
+                pass
+        if text is not None:
+            self.set_status(text)
+
+    def end_progress(self):
         self.progress.stop()
         self.progress.pack_forget()
+
+    def _show_progress(self):
+        if not self.progress.winfo_ismapped():
+            self.progress.pack(side="left", before=self.status)
 
     def set_status(self, text):
         self.status.configure(text=text)

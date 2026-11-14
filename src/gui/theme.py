@@ -179,4 +179,16 @@ def apply(root):
     style.configure("Card.TCheckbutton", background=CARD, foreground=TEXT)
     style.map("Card.TCheckbutton", background=[("active", CARD)])
 
+    # 子页签：选中项白底蓝字，未选中项与底色融合
+    style.configure("TNotebook", background=BG, borderwidth=0,
+                    bordercolor=BORDER, tabmargins=(4, 4, 4, 0))
+    style.configure("TNotebook.Tab", background=BG, foreground=MUTED,
+                    bordercolor=BORDER, lightcolor=BG, darkcolor=BG,
+                    padding=(18, 7), font=font(10))
+    style.map("TNotebook.Tab",
+              background=[("selected", CARD), ("active", NEUTRAL_BG)],
+              foreground=[("selected", PRIMARY), ("active", TEXT)],
+              lightcolor=[("selected", CARD)],
+              darkcolor=[("selected", CARD)])
+
     return style

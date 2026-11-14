@@ -89,9 +89,10 @@ class SoftwareItem:
     install_date: str = ""
     uninstall_cmd: str = ""
     risk: str = RISK_SAFE
-    reason: str = ""           # 风险说明（禁止/警告原因）
-    source: str = ""           # 来源：HKLM/32bit/HKCU
-    checked: bool = True       # UI 默认是否勾选
+    reason_key: str = ""      # 风险说明的 i18n key（由界面层翻译）
+    reason_hint: str = ""     # 说明中的可变片段（发行商 / 组件名）
+    source: str = ""          # 来源：HKLM/32bit/HKCU
+    checked: bool = True      # UI 默认是否勾选
 
     @property
     def effective_size(self) -> int:
@@ -166,8 +167,11 @@ def _norm_drive(path: str) -> str:
     return os.path.splitdrive(os.path.abspath(path))[0].lower()
 
 
-def _classify_risk(publisher: str, name: str) -> tuple[str, str]:
-    """根据发行商和名称判定风险等级与原因。
+def _classify_risk(publisher: str, name: str) -> tuple[str, str, str]:
+    """根据发行商和名称判定风险等级。
+
+    返回 (risk, reason_key, reason_hint)。reason_key 是界面层用来翻译说明的键，
+    核心层不依赖 i18n 模块。
 
     判定顺序：
       1) 名称黑名单（运行库、安全软件、Edge 等）→ FORBID
@@ -182,7 +186,7 @@ def _classify_risk(publisher: str, name: str) -> tuple[str, str]:
     # (1) 名称黑名单（最高优先级）
     for hint in _FORBIDDEN_NAME_HINTS:
         if hint in name_low:
-            return RISK_FORBID, "禁止迁移：%s 属于系统组件或安全软件" % (hint,)
+            return RISK_FORBID, "sw.reason.name_forbid", hint
 
     # (2) Microsoft Corporation 特殊处理
     if pub_low == "microsoft corporation":
@@ -192,20 +196,20 @@ def _classify_risk(publisher: str, name: str) -> tuple[str, str]:
         )
         for hint in _ms_forbid:
             if hint in name_low:
-                return RISK_FORBID, "Microsoft 系统组件，禁止迁移（%s）" % (hint,)
-        return RISK_WARN, "Microsoft 发行商，迁移前请确认软件已关闭"
+                return RISK_FORBID, "sw.reason.ms_forbid", hint
+        return RISK_WARN, "sw.reason.ms_warn", ""
 
     # (3) 发行商黑名单
     for hint in _FORBIDDEN_PUBLISHER_HINTS:
         if hint in pub_low:
-            return RISK_FORBID, "发行商 %s 属于安全软件或系统组件，禁止迁移" % (hint,)
+            return RISK_FORBID, "sw.reason.publisher_forbid", hint
 
     # (4) 警告发行商
     for hint in _WARN_PUBLISHER_HINTS:
         if hint in pub_low:
-            return RISK_WARN, "%s 发行商，迁移前请确认无进程占用" % (hint,)
+            return RISK_WARN, "sw.reason.publisher_warn", hint
 
-    return RISK_SAFE, ""
+    return RISK_SAFE, "", ""
 
 
 def is_c_drive(path: str) -> bool:
@@ -299,7 +303,7 @@ def scan_candidates(
         install_date = (values.get("InstallDate") or "").strip()
         uninstall_cmd = (values.get("UninstallString") or "").strip()
 
-        risk, reason = _classify_risk(publisher, name)
+        risk, reason_key, reason_hint = _classify_risk(publisher, name)
 
         item = SoftwareItem(
             name=name or sub_name,
@@ -311,7 +315,8 @@ def scan_candidates(
             install_date=install_date,
             uninstall_cmd=uninstall_cmd,
             risk=risk,
-            reason=reason,
+            reason_key=reason_key,
+            reason_hint=reason_hint,
             source=source,
             checked=(risk != RISK_FORBID),
         )

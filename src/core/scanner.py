@@ -17,6 +17,7 @@ from ..utils.fmt import is_reparse_point, scandir_robust
 DEFAULT_BUDGET_SECONDS = 6.0
 DEFAULT_BUDGET_ENTRIES = 200000
 DEFAULT_TOP_N = 200
+PROGRESS_INTERVAL = 0.4   # 进度回调的最小间隔（秒）
 
 
 def scan_dir_size(path, budget_seconds=DEFAULT_BUDGET_SECONDS,
@@ -120,7 +121,7 @@ def list_dir_children(path):
 def scan_large_files(root_path, top_n=DEFAULT_TOP_N,
                      budget_seconds=DEFAULT_BUDGET_SECONDS,
                      budget_entries=DEFAULT_BUDGET_ENTRIES,
-                     cancel=None, min_size=0):
+                     cancel=None, min_size=0, progress=None):
     """找出 root_path 下体积最大的 top_n 个文件。
 
     返回 ``(files, truncated, entries)``：
@@ -131,12 +132,16 @@ def scan_large_files(root_path, top_n=DEFAULT_TOP_N,
     ``min_size`` 为字节数，仅统计不小于该体积的文件（0 表示不过滤）。
     重解析点不深入；硬链接按 ``(st_dev, st_ino)`` 去重（仅 inode 有效时）。
     内部使用最小堆，内存占用仅 O(top_n)，可安全扫描整个 C 盘。
+
+    ``progress(entries, current)`` 会在遍历过程中被周期性调用（约每 0.4 秒一次），
+    便于界面显示扫描进度。
     """
     heap = []
     entries = 0
     start = time.monotonic()
     seen = set()
     stack = [root_path]
+    last_progress = 0.0
 
     while stack:
         directory = stack.pop()
@@ -151,6 +156,11 @@ def scan_large_files(root_path, top_n=DEFAULT_TOP_N,
                 entries += 1
                 if entries > budget_entries or (time.monotonic() - start) > budget_seconds:
                     return _heap_to_sorted(heap), True, entries
+                if progress is not None:
+                    now = time.monotonic()
+                    if now - last_progress >= PROGRESS_INTERVAL:
+                        last_progress = now
+                        progress(entries, entry.path)
                 try:
                     st = entry.stat(follow_symlinks=False)
                 except OSError:

@@ -32,6 +32,8 @@ class BrowseTab(ttk.Frame):
         self.node_state = {}   # iid -> "new" / "loading" / "loaded"
         self._ph_seq = 0
         self._root_path = "C:\\"
+        self._size_total = 0   # 本轮提交的目录大小计算总数
+        self._size_done = 0    # 已完成数
 
         self._build()
 
@@ -141,12 +143,21 @@ class BrowseTab(ttk.Frame):
         for name, full, size, link in files:
             self._insert_entry(parent_iid, name, full, "file", size, link)
         if queued:
-            self.app.set_status(tr("browse.status.calc", count=queued))
+            self._size_total += queued
+            self.app.update_progress(self._size_done, self._size_total,
+                                     text=tr("browse.status.calc",
+                                             done=self._size_done,
+                                             total=self._size_total))
         else:
             self.app.set_status(tr("browse.status.loaded", path=parent_iid))
 
     def _on_size(self, payload):
         iid, size, trunc = payload
+        self._size_done += 1
+        if self._size_done >= self._size_total:
+            self.app.end_progress()
+        else:
+            self.app.update_progress(self._size_done, self._size_total)
         if not self.tree.exists(iid):
             return
         values = list(self.tree.item(iid, "values"))
