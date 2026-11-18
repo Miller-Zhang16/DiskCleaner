@@ -27,9 +27,6 @@ PORTABLE = os.path.join(DIST, "DiskCleaner-portable")
 ZIP_PATH = os.path.join(DIST, "DiskCleaner-portable.zip")
 CACHE = os.path.join(DIST, ".cache")
 
-sys.path.insert(0, ROOT)
-from src.utils.config import DEFAULTS  # noqa: E402
-
 # 便携包内嵌的解释器版本必须与本机构建解释器一致，否则 _tkinter.pyd 的 ABI 不兼容
 EMBED_VERSION = "%d.%d.%d" % sys.version_info[:3]
 EMBED_URL = (
@@ -52,6 +49,34 @@ _TKINTER_ASSETS = (
     (("tcl86t.dll", "tcl90.dll"), True),
     (("tk86t.dll", "tcl9tk90.dll"), True),
     (("zlib.dll", "zlib1.dll"), True),
+)
+
+# Embeddable 包自带的、本程序运行完全不会用到的模块与工具。
+# 只删除程序未 import 的项：sqlite3 / ssl / lzma / bz2 / zstd / decimal /
+# asyncio / multiprocessing / xml 等在源码中均无引用，保留纯属增加体积。
+_PRUNE_EMBED = (
+    "_asyncio.pyd",
+    "_bz2.pyd",
+    "_decimal.pyd",
+    "_elementtree.pyd",
+    "_lzma.pyd",
+    "_multiprocessing.pyd",
+    "_overlapped.pyd",
+    "_remote_debugging.pyd",
+    "_sqlite3.pyd",
+    "_ssl.pyd",
+    "_uuid.pyd",
+    "_wmi.pyd",
+    "_zoneinfo.pyd",
+    "_zstd.pyd",
+    "pyexpat.pyd",
+    "select.pyd",
+    "winsound.pyd",
+    "sqlite3.dll",
+    "libssl-3.dll",
+    # libtommath.dll 不能删：Tcl 9（_tkinter）依赖它，删掉后 tkinter 加载失败
+    "python.cat",     # 安装包签名目录，运行不需要
+    "python.exe",     # 启动器只使用 pythonw.exe
 )
 
 
@@ -90,7 +115,7 @@ def prepare_dir():
         shutil.rmtree(PORTABLE, ignore_errors=True)
     os.makedirs(os.path.join(PORTABLE, "python-embed"), exist_ok=True)
     os.makedirs(CACHE, exist_ok=True)
-    log("[1/6] 目录就绪: %s" % PORTABLE)
+    log("[1/7] 目录就绪: %s" % PORTABLE)
 
 
 def download_embed():
@@ -98,9 +123,9 @@ def download_embed():
     name = "python-%s-embed-amd64.zip" % EMBED_VERSION
     target = os.path.join(CACHE, name)
     if os.path.isfile(target) and os.path.getsize(target) > 1024 * 1024:
-        log("[2/6] 复用缓存: %s" % name)
+        log("[2/7] 复用缓存: %s" % name)
     else:
-        log("[2/6] 下载 %s ..." % EMBED_URL)
+        log("[2/7] 下载 %s ..." % EMBED_URL)
         try:
             urllib.request.urlretrieve(EMBED_URL, target)
         except Exception as exc:
@@ -112,7 +137,7 @@ def download_embed():
 
 def copy_tkinter():
     """从当前解释器拷贝 tkinter 所需的三类资源（C 扩展 / tcl 资源 / Python 包）。"""
-    log("[3/6] 集成 tkinter ...")
+    log("[3/7] 集成 tkinter ...")
     prefix = sys.prefix
     dll_dirs = [os.path.join(prefix, "DLLs"), os.path.join(prefix, "Lib", "DLLs"), prefix]
 
@@ -152,7 +177,9 @@ def copy_tkinter():
 
     src = os.path.join(prefix, "Lib", "tkinter")
     if os.path.isdir(src):
-        shutil.copytree(src, os.path.join(dest, "Lib", "tkinter"), dirs_exist_ok=True)
+        shutil.copytree(src, os.path.join(dest, "Lib", "tkinter"),
+                        dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     else:
         fail("未找到 tkinter Python 包。")
 
@@ -170,7 +197,7 @@ def copy_tkinter():
 
 def patch_pth():
     """配置 python*._pth：加入项目根与 Lib，并注释 import site。"""
-    log("[4/6] 配置 _pth ...")
+    log("[4/7] 配置 _pth ...")
     embed = os.path.join(PORTABLE, "python-embed")
     candidates = [f for f in os.listdir(embed) if f.endswith("._pth")]
     if not candidates:
@@ -187,40 +214,42 @@ def patch_pth():
     log("      %s 配置完成" % candidates[0])
 
 
-def write_default_settings(dest_ini):
-    """生成出厂默认 settings.ini。
+def prune_embed():
+    """删除运行不需要的解释器组件，尽量缩小分发包。
 
-    不直接拷贝开发目录里的配置文件：那里积累了开发者的窗口尺寸、
-    清理项勾选历史等本机状态，随包分发会让用户拿到非初始状态。
-    窗口尺寸这类运行时状态交由程序首次退出时写入。
+    data 目录不在包内：程序首次运行会自动创建 settings.ini、
+    custom_targets.txt 与 logs，用户拿到的是完全干净的初始状态。
     """
-    lines = ["[General]"]
-    for key, val in DEFAULTS.items():
-        if key == "window_geometry":
-            continue  # 运行时状态，不写入出厂配置，由程序按默认值处理
-        lines.append("%s = %s" % (key, val))
-    with open(dest_ini, "w", encoding="utf-8", newline="\r\n") as fh:
-        fh.write("\n".join(lines) + "\n")
+    log("[5/7] 精简解释器 ...")
+    embed = os.path.join(PORTABLE, "python-embed")
+    removed = 0
+    for name in _PRUNE_EMBED:
+        path = os.path.join(embed, name)
+        if os.path.isfile(path):
+            os.remove(path)
+            removed += 1
+    lib = os.path.join(embed, "Lib")
+    for base, dirs, _files in os.walk(lib):
+        for d in list(dirs):
+            if d == "__pycache__":
+                shutil.rmtree(os.path.join(base, d), ignore_errors=True)
+                dirs.remove(d)
+    log("      移除 %d 个未使用的组件" % removed)
 
 
 def copy_project():
-    """拷贝程序本体、源码、配置模板与图标。"""
-    log("[5/6] 拷贝项目文件 ...")
+    """拷贝程序本体、源码与图标（data 由程序首次运行自动生成）。"""
+    log("[6/7] 拷贝项目文件 ...")
     shutil.copy2(os.path.join(ROOT, "main.py"), PORTABLE)
     shutil.copytree(
         os.path.join(ROOT, "src"),
         os.path.join(PORTABLE, "src"),
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
     )
-    data_dir = os.path.join(PORTABLE, "data")
-    os.makedirs(data_dir, exist_ok=True)
-    write_default_settings(os.path.join(data_dir, "settings.ini"))
-    # custom_targets.txt 是纯模板注释文件，可直接拷贝
-    src = os.path.join(ROOT, "data", "custom_targets.txt")
-    if os.path.isfile(src):
-        shutil.copy2(src, data_dir)
-    if os.path.isdir(os.path.join(ROOT, "assets")):
-        shutil.copytree(os.path.join(ROOT, "assets"), os.path.join(PORTABLE, "assets"))
+    icon = os.path.join(ROOT, "assets", "icon.ico")
+    if os.path.isfile(icon):
+        os.makedirs(os.path.join(PORTABLE, "assets"), exist_ok=True)
+        shutil.copy2(icon, os.path.join(PORTABLE, "assets", "icon.ico"))
 
 
 def find_gcc():
@@ -240,7 +269,7 @@ def find_gcc():
 
 def make_launcher():
     """编译原生 C 启动器；无编译器时降级为 .bat。"""
-    log("[6/6] 生成启动器 ...")
+    log("[7/7] 生成启动器 ...")
     gcc = find_gcc()
     if gcc:
         windres = os.path.join(os.path.dirname(gcc), "windres.exe")
@@ -319,6 +348,7 @@ def main():
     download_embed()
     copy_tkinter()
     patch_pth()
+    prune_embed()
     copy_project()
     make_launcher()
     count = make_zip()
