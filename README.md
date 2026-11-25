@@ -106,14 +106,15 @@ C_improve/
 ├── main.py                     # Entry point
 ├── build.bat                   # Local one-click build (three modes)
 ├── CHANGELOG.md                # Changelog (maintained by the release script)
-├── requirements.txt            # Build-time dependencies (none at runtime)
-├── requirements-dev.txt        # Dev / CI dependencies (ruff)
+├── requirements-dev.txt        # Dev / CI / packaging dependencies (none at runtime)
 ├── pyproject.toml              # ruff configuration
 ├── README.md
 ├── LICENSE
 ├── .gitignore
 ├── assets/
 │   └── icon.ico                # App icon (window + exe resource)
+├── release/
+│   └── DiskCleaner-v1.0.0-win64.zip   # Ready-to-run package for reviewers
 ├── launcher/                   # Native C launcher source
 │   ├── launcher.c              # Spawns python-embed\pythonw.exe
 │   └── launcher.rc             # Icon and version info resource
@@ -562,14 +563,15 @@ C_improve/
 ├── main.py                     # 程序入口
 ├── build.bat                   # 本地一键构建（三种方式可选）
 ├── CHANGELOG.md                # 更新日志（随版本递增自动维护）
-├── requirements.txt            # 打包所需依赖（运行时无依赖）
-├── requirements-dev.txt        # 开发/CI 依赖（ruff）
+├── requirements-dev.txt        # 开发/CI/打包依赖（运行时无依赖）
 ├── pyproject.toml              # ruff 代码规范配置
 ├── README.md
 ├── LICENSE
 ├── .gitignore
 ├── assets/
 │   └── icon.ico                # 应用图标（窗口 + exe 资源）
+├── release/
+│   └── DiskCleaner-v1.0.0-win64.zip   # 可直接分发的便携包
 ├── launcher/                   # 原生 C 启动器源码
 │   ├── launcher.c              # 拉起 python-embed\pythonw.exe
 │   └── launcher.rc             # 图标与版本信息资源
