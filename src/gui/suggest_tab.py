@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from ..core.processes import busy_targets
-from ..core.targets import estimate_target_size
+from ..core.targets import estimate_target_size, resolve_target_paths
 from ..utils.fmt import fmt_size
 from ..utils.i18n import tr
 from . import theme
@@ -83,11 +83,15 @@ class SuggestTab(ttk.Frame):
         desc = t.get("desc", "")
         if t.get("note"):
             desc = "%s（%s）" % (desc, t["note"])
+        if t.get("blocked"):
+            desc = tr("suggest.blocked", segment=t["blocked"], desc=desc)
         checked = t.get("_checked")
+        if t.get("blocked"):
+            checked = False
         if t["needs_admin"] and not self.app.admin:
             checked = False
-        return ("☑" if checked else "☐", t["name"], size_str,
-                t["category"], t["risk"], desc)
+        mark = "—" if t.get("blocked") else ("☑" if checked else "☐")
+        return (mark, t["name"], size_str, t["category"], t["risk"], desc)
 
     def populate(self):
         self.tree.delete(*self.tree.get_children())
@@ -109,7 +113,7 @@ class SuggestTab(ttk.Frame):
         for iid, idx in self.index.items():
             t = self.targets[idx]
             tags = []
-            if t["needs_admin"] and not self.app.admin:
+            if t.get("blocked") or (t["needs_admin"] and not self.app.admin):
                 tags.append("disabled")
             if t.get("risk") == "高":
                 tags.append("risk_high")
@@ -186,6 +190,10 @@ class SuggestTab(ttk.Frame):
         if not iid or iid not in self.index:
             return
         t = self.targets[self.index[iid]]
+        if t.get("blocked"):
+            self.app.set_status(tr("suggest.status.blocked", name=t["name"],
+                                   segment=t["blocked"]))
+            return
         if t["needs_admin"] and not self.app.admin:
             self.app.set_status(tr("suggest.status.need_admin", name=t["name"]))
             return
@@ -199,7 +207,7 @@ class SuggestTab(ttk.Frame):
         """返回已勾选且当前权限可执行的目标，以及被权限拦截的目标名。"""
         selected, blocked = [], []
         for t in self.targets:
-            if not t.get("_checked"):
+            if not t.get("_checked") or t.get("blocked"):
                 continue
             if t["needs_admin"] and not self.app.admin:
                 blocked.append(t["name"])
@@ -236,7 +244,7 @@ class SuggestTab(ttk.Frame):
                 return
 
         if self.app.config.confirm_before_clean:
-            names = "\n".join("· %s" % t["name"] for t in selected)
+            names = self._preview_lines(selected)
             est = sum((t["_size"] or 0) for t in selected)
             if not messagebox.askyesno(
                     tr("suggest.msg.confirm_title"),
@@ -245,10 +253,30 @@ class SuggestTab(ttk.Frame):
                 return
         self.app.run_cleanup(selected)
 
+    def _preview_lines(self, selected):
+        """确认框中的逐项清单：名称、体积、风险与实际路径。"""
+        lines = []
+        for t in selected:
+            size = fmt_size(t.get("_size") or 0)
+            risk = tr("suggest.preview.risk") if t.get("risk") == "高" else ""
+            lines.append(tr("suggest.preview.item", name=t["name"],
+                            size=size, risk=risk))
+            if t.get("recycle"):
+                lines.append(tr("suggest.preview.recycle"))
+                continue
+            dirs, files = resolve_target_paths(t)
+            paths = dirs + files
+            if not paths:
+                lines.append(tr("suggest.preview.none"))
+            else:
+                lines.append(tr("suggest.preview.paths",
+                                path=paths[0], count=len(paths)))
+        return "\n".join(lines)
+
     def one_click(self):
         """一键采用建议：勾选全部内置推荐的安全清理项并执行。"""
         for t in self.targets:
-            t["_checked"] = bool(t.get("default")) and (
+            t["_checked"] = bool(t.get("default")) and not t.get("blocked") and (
                 not t["needs_admin"] or self.app.admin)
             self.app.config.set_target_default(t["key"], t["_checked"])
         self.app.config.save()

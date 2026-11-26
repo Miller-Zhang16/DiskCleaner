@@ -276,6 +276,9 @@ def execute_target(target, cancel=None, log=None, skip_paths=None,
     min_age = target.get("min_age")
     now = time.time() if min_age else None
 
+    if target.get("blocked"):
+        return 0, 0, [], "路径包含受保护目录「%s」，已跳过" % target["blocked"]
+
     busy_procs = target.get("busy_processes") or ()
     if busy_procs:
         running = running_processes(busy_procs)

@@ -179,9 +179,16 @@ MESSAGES = {
     "suggest.msg.busy_title": "检测到程序正在运行",
     "suggest.msg.busy": "以下程序正在运行，相关缓存会被跳过：\n{items}\n\n是否继续清理其余项目？",
     "suggest.msg.all_busy": "勾选的项目都因程序正在运行被跳过，请关闭程序后重试。",
+    "suggest.blocked": "受保护目录（{segment}），已禁用：{desc}",
+    "suggest.status.blocked": "「{name}」包含受保护目录 {segment}，不可清理",
+    "suggest.preview.item": "· {name}　{size}{risk}",
+    "suggest.preview.risk": "（高风险）",
+    "suggest.preview.paths": "　　 {path}（共 {count} 个路径）",
+    "suggest.preview.recycle": "　　 清空回收站，不可恢复",
+    "suggest.preview.none": "　　 当前没有匹配路径",
     "suggest.msg.confirm_title": "确认清理",
     "suggest.msg.confirm": "即将清理以下 {count} 项：\n{names}\n\n预估可释放：约 {size}\n\n"
-                            "删除后不可恢复，确定继续吗？",
+                            "缓存类项目永久删除；用户数据会移入回收站，可还原。确定继续吗？",
 
     # 迁移页
     "migrate.tip": "迁移会把源目录内容复制到其他盘，校验通过后删除源目录，并在原路径建立"
@@ -404,6 +411,12 @@ MESSAGES = {
     "settings.field.language": "界面语言（zh_CN / en_US，重启后生效）",
     "settings.confirm_before_clean": "清理操作前二次确认",
     "settings.btn.view_history": "查看清理历史",
+    "settings.btn.diagnostics": "导出诊断包",
+    "settings.diag.title": "保存诊断包",
+    "settings.diag.done_title": "已导出",
+    "settings.diag.done": "诊断包已保存到：\n{path}\n\n其中包含配置、最近日志与清理历史，可直接发给技术支持。",
+    "settings.diag.failed_title": "导出失败",
+    "settings.diag.failed": "无法写入诊断包：\n{error}",
     "settings.btn.save": "保存设置",
     "settings.btn.reload": "重新加载",
     "settings.btn.open_dir": "打开配置文件所在目录",

@@ -19,6 +19,7 @@
     min_age      只清理该时长（秒）之前的项目
     trash        True 表示删除时移入回收站（用户数据类）
     busy_processes 清理前需要检测的进程名，运行中则跳过该项
+    blocked      自定义目录命中受保护路径段时记录段名，该项不可清理
     desc / note  说明与额外提示
 """
 
@@ -27,6 +28,7 @@ import os
 import time
 
 from ..utils.fmt import expand_path, is_glob
+from .pathguard import protected_segment
 from .scanner import scan_dir_size
 
 # 浏览器缓存中允许清理的子目录（绝不触碰 User Data 其余部分）
@@ -162,10 +164,11 @@ def _custom_targets(config):
     for i, raw_path in enumerate(config.custom_targets()):
         p = expand_path(raw_path)
         base = os.path.basename(p.rstrip("\\")) or p
+        blocked = protected_segment(p)
         out.append(dict(
             key="custom_%d" % i, name="自定义：%s" % base,
             paths=[p], category="其他", risk="中", needs_admin=False,
-            default=False, custom=True, trash=True,
+            default=False, custom=True, trash=True, blocked=blocked,
             desc="来自 data/custom_targets.txt 的自定义清理目录"))
     return out
 
@@ -212,6 +215,8 @@ def resolve_target_paths(target):
 
 def estimate_target_size(target, cancel=None, budget_seconds=None, budget_entries=None):
     """估算某清理项可释放的空间。返回 ``(bytes_or_None, truncated)``。"""
+    if target.get("blocked"):
+        return 0, False
     if target.get("recycle"):
         from .recycle import recycle_bin_size
         return recycle_bin_size(), False

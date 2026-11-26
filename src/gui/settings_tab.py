@@ -13,9 +13,11 @@
 """
 
 import os
+import time
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
+from ..core.diagnostic import build_diagnostics
 from ..utils.config import GENERAL
 from ..utils.i18n import tr
 from . import theme
@@ -112,6 +114,9 @@ class SettingsTab(ttk.Frame):
         ttk.Button(right, text=tr("settings.btn.view_history"),
                    style="Ghost.TButton",
                    command=self._open_history).pack(anchor="w", pady=(0, 10))
+        ttk.Button(right, text=tr("settings.btn.diagnostics"),
+                   style="Ghost.TButton",
+                   command=self._export_diagnostics).pack(anchor="w", pady=(0, 10))
 
         self._group(right, "settings.group.log", [
             ("log_level", "settings.field.log_level", "level"),
@@ -217,6 +222,24 @@ class SettingsTab(ttk.Frame):
 
     def _open_history(self):
         self.app.show_history()
+
+    def _export_diagnostics(self):
+        """把配置、日志与历史打包，便于用户反馈问题。"""
+        default = "DiskCleaner-diagnostics-%s.zip" % time.strftime("%Y%m%d-%H%M%S")
+        path = filedialog.asksaveasfilename(
+            title=tr("settings.diag.title"), defaultextension=".zip",
+            initialfile=default, filetypes=[("ZIP", "*.zip")])
+        if not path:
+            return
+        try:
+            count = build_diagnostics(path)
+        except OSError as e:
+            messagebox.showerror(tr("settings.diag.failed_title"),
+                                 tr("settings.diag.failed", error=str(e)))
+            return
+        self.app.logger.info("导出诊断包：%s（%d 个文件）" % (path, count))
+        messagebox.showinfo(tr("settings.diag.done_title"),
+                            tr("settings.diag.done", path=path))
 
     def _open_config_dir(self):
         d = os.path.dirname(self.app.config.path)

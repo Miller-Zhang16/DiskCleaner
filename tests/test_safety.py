@@ -2,6 +2,7 @@
 """清理安全边界：浏览器多配置路径与进程占用检测。"""
 
 from src.core import processes
+from src.core.pathguard import protected_segment
 from src.core.targets import build_targets
 
 
@@ -36,3 +37,30 @@ def test_busy_targets_empty_when_nothing_running(monkeypatch):
     targets = [{"key": "edge_cache", "name": "Edge",
                 "busy_processes": ("msedge",)}]
     assert processes.busy_targets(targets) == []
+
+
+def test_protected_segments():
+    assert protected_segment(r"C:\Users\me\Documents\a") == "documents"
+    assert protected_segment(r"C:\work\.git\objects") == ".git"
+    assert protected_segment(r"C:\Windows\Temp") is None
+    assert protected_segment(r"D:\Scratch") is None
+
+
+class _Cfg:
+    temp_min_age_seconds = 86400
+
+    def ensure_target(self, key, default):
+        pass
+
+    def target_default(self, key, default):
+        return default
+
+    def custom_targets(self):
+        return [r"C:\Users\me\Documents", r"D:\Scratch"]
+
+
+def test_custom_targets_are_blocked_by_segment():
+    targets = build_targets(_Cfg())
+    custom = {t["name"].split("：")[-1]: t for t in targets if t.get("custom")}
+    assert custom["Documents"]["blocked"] == "documents"
+    assert custom["Scratch"]["blocked"] is None

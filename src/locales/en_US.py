@@ -187,9 +187,17 @@ MESSAGES = {
                         "Continue with the remaining items?",
     "suggest.msg.all_busy": "All selected items were skipped because their programs are running. "
                             "Close them and try again.",
+    "suggest.blocked": "Protected folder ({segment}), disabled: {desc}",
+    "suggest.status.blocked": "“{name}” contains the protected folder {segment} and cannot be cleaned.",
+    "suggest.preview.item": "· {name}  {size}{risk}",
+    "suggest.preview.risk": " (high risk)",
+    "suggest.preview.paths": "     {path} ({count} path(s) total)",
+    "suggest.preview.recycle": "     Empty the Recycle Bin — cannot be undone",
+    "suggest.preview.none": "     No matching paths right now",
     "suggest.msg.confirm_title": "Confirm cleanup",
     "suggest.msg.confirm": "About to clean {count} item(s):\n{names}\n\nEstimated reclaimable: {size}\n\n"
-                            "This cannot be undone. Continue?",
+                            "Cache items are deleted permanently; user data is moved to the Recycle Bin "
+                            "and can be restored. Continue?",
 
     # Migrate tab
     "migrate.tip": "Migration copies a directory to another drive, verifies the copy, deletes the source, "
@@ -418,6 +426,13 @@ MESSAGES = {
     "settings.field.language": "UI language (zh_CN / en_US, restart required)",
     "settings.confirm_before_clean": "Confirm before cleaning",
     "settings.btn.view_history": "View Cleanup History",
+    "settings.btn.diagnostics": "Export Diagnostics",
+    "settings.diag.title": "Save diagnostics",
+    "settings.diag.done_title": "Exported",
+    "settings.diag.done": "Diagnostics saved to:\n{path}\n\nIt contains settings, recent logs and cleanup history; "
+                          "send it to support directly.",
+    "settings.diag.failed_title": "Export failed",
+    "settings.diag.failed": "Could not write the diagnostics package:\n{error}",
     "settings.btn.save": "Save Settings",
     "settings.btn.reload": "Reload",
     "settings.btn.open_dir": "Open Config Folder",

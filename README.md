@@ -114,7 +114,7 @@ C_improve/
 ├── assets/
 │   └── icon.ico                # App icon (window + exe resource)
 ├── release/
-│   └── DiskCleaner-v1.1.0-win64.zip   # Ready-to-run package for reviewers
+│   └── DiskCleaner-v1.2.0-win64.zip   # Ready-to-run package for reviewers
 ├── launcher/                   # Native C launcher source
 │   ├── launcher.c              # Spawns python-embed\pythonw.exe
 │   └── launcher.rc             # Icon and version info resource
@@ -288,7 +288,7 @@ Logs are written to `data/logs/diskcleaner.log`, rotating at 1 MB × 3 files, an
 at the bottom of the window:
 
 ```
-[2026-10-20 13:05:12] [INFO] Application started. Version v1.1.0, privileges: Administrator
+[2026-10-20 13:05:12] [INFO] Application started. Version v1.2.0, privileges: Administrator
 [2026-10-20 13:05:20] [INFO] Cleanup started: User temp files …
 [2026-10-20 13:05:24] [INFO] [User temp files] Cleaning C:\Users\me\AppData\Local\Temp: freed 2.2 GB, deleted 1834 items
 [2026-10-20 13:05:25] [INFO] One-click cleanup finished.; Freed (estimated): 3.9 GB, deleted 2911 items
@@ -571,7 +571,7 @@ C_improve/
 ├── assets/
 │   └── icon.ico                # 应用图标（窗口 + exe 资源）
 ├── release/
-│   └── DiskCleaner-v1.1.0-win64.zip   # 可直接分发的便携包
+│   └── DiskCleaner-v1.2.0-win64.zip   # 可直接分发的便携包
 ├── launcher/                   # 原生 C 启动器源码
 │   ├── launcher.c              # 拉起 python-embed\pythonw.exe
 │   └── launcher.rc             # 图标与版本信息资源
@@ -744,7 +744,7 @@ C:\Temp\MyAppCache
 日志位于 `data/logs/diskcleaner.log`，按 1MB × 3 份滚动，同时回显到界面底部日志面板：
 
 ```
-[2026-10-20 13:05:12] [INFO] 程序启动完成。版本 v1.1.0，当前权限：管理员模式
+[2026-10-20 13:05:12] [INFO] 程序启动完成。版本 v1.2.0，当前权限：管理员模式
 [2026-10-20 13:05:20] [INFO] 开始清理：用户临时文件 …
 [2026-10-20 13:05:24] [INFO] [用户临时文件] 清理 C:\Users\me\AppData\Local\Temp：释放 2.2 GB，删除 1834 项
 [2026-10-20 13:05:25] [INFO] 一键清理 完成。；实际释放（估算）：3.9 GB，删除 2911 项
