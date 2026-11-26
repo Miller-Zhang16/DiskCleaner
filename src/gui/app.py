@@ -6,11 +6,13 @@ import shutil
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from ..core.cleaner import PROTECTED_PATHS, default_skip_paths, delete_tree_contents, execute_target, unlink_file
+from ..core.cleaner import PROTECTED_PATHS, default_skip_paths, execute_target
 from ..core.growth import GrowthStore
 from ..core.history import History
 from ..core.migrator import MigrationStore
 from ..core.runtime import data_dir, is_admin, relaunch_as_admin
+from ..core.scanner import scan_dir_size
+from ..core.trash import send_to_trash
 from ..utils.fmt import fmt_size
 from ..utils.i18n import tr
 from ..utils.taskrunner import LANE_BATCH, LANE_SCAN, PRIORITY_CLEAN, TaskRunner
@@ -400,6 +402,8 @@ class CleanupApp:
     def _job_clean_targets(self, gen, ev, selected):
         total_freed = 0
         total_deleted = 0
+        trash_freed = 0
+        trash_count = 0
         all_skipped = []
         results = []
         for t in selected:
@@ -412,8 +416,12 @@ class CleanupApp:
 
             freed, deleted, skipped, msg = execute_target(
                 t, cancel=ev, log=logln, skip_paths=default_skip_paths())
-            total_freed += freed
-            total_deleted += deleted
+            if t.get("trash"):
+                trash_freed += freed
+                trash_count += deleted
+            else:
+                total_freed += freed
+                total_deleted += deleted
             all_skipped.extend(skipped)
             results.append({
                 "name": t["name"], "freed": freed,
@@ -423,7 +431,8 @@ class CleanupApp:
         self.runner.emit("clean", gen, "clean_done", {
             "freed": total_freed, "deleted": total_deleted, "skipped": all_skipped,
             "cancelled": ev.is_set(), "refresh": None, "title": tr("app.clean_title"),
-            "results": results})
+            "results": results,
+            "trash_freed": trash_freed, "trash_count": trash_count})
 
     def run_delete(self, path, kind):
         """删除浏览页选中的单个文件/目录（需二次确认）。"""
@@ -450,21 +459,20 @@ class CleanupApp:
             priority=PRIORITY_CLEAN)
 
     def _job_delete_path(self, gen, ev, path, kind, parent):
-        if kind == "dir":
-            freed, deleted, skipped, _ = delete_tree_contents(
-                path, cancel=ev, skip_paths=default_skip_paths())
-            try:
-                os.rmdir(path)
-            except OSError:
-                pass
-        else:
-            size, err = unlink_file(path)
-            freed = size or 0
-            deleted = 1 if err is None else 0
-            skipped = [] if err is None else [(path, err)]
+        # 浏览页/大文件页删除的是用户数据，统一移入回收站，误删可还原
+        try:
+            if kind == "dir":
+                size, _, _ = scan_dir_size(path, cancel=ev)
+            else:
+                size = os.lstat(path).st_size
+        except OSError:
+            size = 0
+        moved, skipped = send_to_trash([path])
+        freed = size if moved else 0
+        deleted = len(moved)
         self.runner.emit("clean", gen, "clean_done", {
             "freed": freed, "deleted": deleted, "skipped": skipped,
-            "cancelled": ev.is_set(), "refresh": parent,
+            "cancelled": ev.is_set(), "refresh": parent, "trashed": True,
             "title": tr("app.title.delete", path=path),
             "results": [{"name": path, "freed": freed,
                          "deleted": deleted, "skipped": len(skipped)}]})
@@ -489,18 +497,22 @@ class CleanupApp:
         for path in paths:
             if ev.is_set():
                 break
-            size, err = unlink_file(path)
-            if err is None:
-                freed += size or 0
+            try:
+                size = os.lstat(path).st_size
+            except OSError:
+                size = 0
+            moved, failed = send_to_trash([path])
+            if moved:
+                freed += size
                 deleted += 1
             else:
-                skipped.append((path, err))
+                skipped.extend(failed)
         self.runner.emit("clean", gen, "clean_done", {
             "freed": freed, "deleted": deleted, "skipped": skipped,
             "cancelled": ev.is_set(), "refresh": None, "title": title,
             "results": [{"name": title, "freed": freed,
                          "deleted": deleted, "skipped": len(skipped)}],
-            "on_done": on_done})
+            "trashed": True, "on_done": on_done})
 
     def handle_clean(self, kind, payload):
         if kind == "log":
@@ -520,11 +532,20 @@ class CleanupApp:
                 # 只存前 50 条失败项，避免历史文件膨胀
                 "failures": [{"path": p, "error": str(e)}
                              for p, e in payload["skipped"][:50]],
+                "trashed": bool(payload.get("trashed")),
             })
 
-            lines = ["%s 完成。" % payload.get("title", "清理"),
-                     "实际释放（估算）：%s，删除 %d 项"
-                     % (fmt_size(payload["freed"]), payload["deleted"])]
+            lines = ["%s 完成。" % payload.get("title", "清理")]
+            if payload.get("trashed"):
+                lines.append(tr("app.clean.trashed", size=fmt_size(payload["freed"]),
+                                count=payload["deleted"]))
+            else:
+                lines.append("实际释放（估算）：%s，删除 %d 项"
+                             % (fmt_size(payload["freed"]), payload["deleted"]))
+                if payload.get("trash_count"):
+                    lines.append(tr("app.clean.trashed",
+                                    size=fmt_size(payload.get("trash_freed", 0)),
+                                    count=payload["trash_count"]))
             if payload["cancelled"]:
                 lines.append("（任务被中断，结果可能不完整）")
             if payload["skipped"]:

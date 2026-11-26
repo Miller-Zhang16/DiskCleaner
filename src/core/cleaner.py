@@ -17,9 +17,12 @@ import stat
 import time
 
 from ..utils.fmt import fmt_size, is_reparse_point, scandir_robust
+from .processes import running_processes
 from .recycle import empty_recycle_bin, recycle_bin_size
 from .runtime import app_root
+from .scanner import scan_dir_size
 from .targets import resolve_target_paths
+from .trash import send_to_trash
 
 
 def default_skip_paths():
@@ -183,12 +186,101 @@ def delete_tree_contents(root, min_age=None, now=None, cancel=None, skip_paths=N
     return freed, deleted, skipped, None
 
 
+def trash_tree_contents(root, min_age=None, now=None, cancel=None):
+    """把目录 ``root`` 下的内容移入回收站（保留 root 本身）。
+
+    返回 ``(moved_bytes, moved_items, failures, message)``。
+    """
+    if not os.path.isdir(root):
+        return 0, 0, [], "目录不存在：%s" % root
+
+    items = []
+    try:
+        it = scandir_robust(root)
+    except OSError as e:
+        return 0, 0, [], "目录无法读取：%s" % e
+    with it:
+        for entry in it:
+            if cancel is not None and cancel.is_set():
+                break
+            try:
+                st = entry.stat(follow_symlinks=False)
+                is_dir = entry.is_dir(follow_symlinks=False)
+            except OSError:
+                continue
+            if not is_dir and min_age is not None and now is not None:
+                if (now - st.st_mtime) < min_age:
+                    continue
+            if is_dir:
+                size, _, _ = scan_dir_size(entry.path, cancel=cancel)
+            else:
+                size = st.st_size
+            items.append((entry.path, size))
+
+    moved_paths, failures = send_to_trash([p for p, _ in items])
+    moved_set = set(moved_paths)
+    moved_bytes = sum(size for p, size in items if p in moved_set)
+    return moved_bytes, len(moved_paths), failures, None
+
+
+def _trash_target(target, dirs, files, min_age, now, cancel, log):
+    """按「移入回收站」方式执行一个清理目标。"""
+    name = target["name"]
+    total_moved = 0
+    total_count = 0
+    skipped = []
+    notes = []
+
+    for d in dirs:
+        moved, count, failed, msg = trash_tree_contents(
+            d, min_age=min_age, now=now, cancel=cancel)
+        total_moved += moved
+        total_count += count
+        skipped.extend(failed)
+        if msg:
+            notes.append(msg)
+        if log:
+            log("[%s] 移入回收站 %s：%d 项，约 %s"
+                % (name, d, count, fmt_size(moved)))
+
+    pending = []
+    for f in files:
+        if cancel is not None and cancel.is_set():
+            break
+        try:
+            st = os.lstat(f)
+        except OSError:
+            continue
+        if min_age is not None and now is not None and (now - st.st_mtime) < min_age:
+            continue
+        pending.append((f, st.st_size))
+    if pending:
+        size_map = dict(pending)
+        moved_paths, failed = send_to_trash([p for p, _ in pending])
+        total_moved += sum(size_map[p] for p in moved_paths)
+        total_count += len(moved_paths)
+        skipped.extend(failed)
+
+    msg = None
+    if total_count:
+        msg = "已移入回收站（约 %s），清空回收站后才会释放空间" % fmt_size(total_moved)
+    if notes:
+        msg = "；".join(notes + ([msg] if msg else []))
+    return total_moved, total_count, skipped, msg
+
+
 def execute_target(target, cancel=None, log=None, skip_paths=None,
                    budget_seconds=None, budget_entries=None):
     """执行单个清理目标。返回 ``(freed_bytes, deleted_items, skipped, message)``。"""
     name = target["name"]
     min_age = target.get("min_age")
     now = time.time() if min_age else None
+
+    busy_procs = target.get("busy_processes") or ()
+    if busy_procs:
+        running = running_processes(busy_procs)
+        if running:
+            return 0, 0, [], "%s 正在运行，已跳过该项" % "、".join(sorted(running))
 
     if target.get("recycle"):
         before = recycle_bin_size()
@@ -200,6 +292,9 @@ def execute_target(target, cancel=None, log=None, skip_paths=None,
         return 0, 0, [], msg
 
     dirs, files = resolve_target_paths(target)
+    if target.get("trash"):
+        return _trash_target(target, dirs, files, min_age, now, cancel, log)
+
     total_freed = 0
     total_deleted = 0
     all_skipped = []

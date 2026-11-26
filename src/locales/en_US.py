@@ -48,7 +48,10 @@ MESSAGES = {
     "app.msg.confirm_delete": "Confirm delete",
     "app.msg.confirm_delete_dir": "The entire directory and its contents will be deleted:\n{path}",
     "app.msg.confirm_delete_file": "This file will be deleted:\n{path}",
-    "app.msg.confirm_delete_notice": "\n\nThis cannot be undone. Continue?",
+    "app.msg.confirm_delete_notice": "\n\nItems will be moved to the Recycle Bin and can be restored; "
+                                     "space is freed only after emptying it. Continue?",
+    "app.clean.trashed": "Moved to the Recycle Bin (~{size}, {count} item(s)); restore any time. "
+                         "Space is freed only after emptying it.",
     "app.clean_title": "One-click cleanup",
     "app.title.delete": "Delete {path}",
     "app.msg.config_title": "Settings",
@@ -179,6 +182,11 @@ MESSAGES = {
                               "Restart the program as administrator first.",
     "suggest.msg.none_title": "Nothing selected",
     "suggest.msg.none": "Select at least one cleanup item first.",
+    "suggest.msg.busy_title": "Programs are running",
+    "suggest.msg.busy": "These programs are running, so their caches will be skipped:\n{items}\n\n"
+                        "Continue with the remaining items?",
+    "suggest.msg.all_busy": "All selected items were skipped because their programs are running. "
+                            "Close them and try again.",
     "suggest.msg.confirm_title": "Confirm cleanup",
     "suggest.msg.confirm": "About to clean {count} item(s):\n{names}\n\nEstimated reclaimable: {size}\n\n"
                             "This cannot be undone. Continue?",
@@ -275,6 +283,8 @@ MESSAGES = {
     # Result dialog
     "result.title": "Cleanup Result",
     "result.summary": "Estimated space freed: {freed}    {deleted} item(s) deleted",
+    "result.summary.trashed": "Moved to the Recycle Bin: {freed}    {deleted} item(s) "
+                              "(restorable; space freed after emptying)",
     "result.cancelled": "The task was interrupted; results may be incomplete.",
     "result.results_heading": "Per-item details",
     "result.col.name": "Item",

@@ -48,7 +48,8 @@ MESSAGES = {
     "app.msg.confirm_delete": "确认删除",
     "app.msg.confirm_delete_dir": "将删除该目录及其全部内容：\n{path}",
     "app.msg.confirm_delete_file": "将删除该文件：\n{path}",
-    "app.msg.confirm_delete_notice": "\n\n此操作不可恢复，确定继续吗？",
+    "app.msg.confirm_delete_notice": "\n\n将移入回收站，可从回收站还原；清空回收站后才会释放空间。确定继续吗？",
+    "app.clean.trashed": "已移入回收站（约 {size}，{count} 项），可随时还原；清空回收站后才会释放空间。",
     "app.clean_title": "一键清理",
     "app.title.delete": "删除 {path}",
     "app.msg.config_title": "配置",
@@ -175,6 +176,9 @@ MESSAGES = {
     "suggest.msg.need_admin": "选中的清理项均需管理员权限：\n{names}\n\n请先点击“以管理员身份重启”。",
     "suggest.msg.none_title": "未选择",
     "suggest.msg.none": "请先勾选要清理的项目。",
+    "suggest.msg.busy_title": "检测到程序正在运行",
+    "suggest.msg.busy": "以下程序正在运行，相关缓存会被跳过：\n{items}\n\n是否继续清理其余项目？",
+    "suggest.msg.all_busy": "勾选的项目都因程序正在运行被跳过，请关闭程序后重试。",
     "suggest.msg.confirm_title": "确认清理",
     "suggest.msg.confirm": "即将清理以下 {count} 项：\n{names}\n\n预估可释放：约 {size}\n\n"
                             "删除后不可恢复，确定继续吗？",
@@ -268,6 +272,7 @@ MESSAGES = {
     # 清理结果对话框
     "result.title": "清理结果",
     "result.summary": "实际释放（估算）：{freed}　　删除 {deleted} 项",
+    "result.summary.trashed": "已移入回收站：{freed}　　{deleted} 项（可还原，清空回收站后释放）",
     "result.cancelled": "任务被中断，结果可能不完整。",
     "result.results_heading": "各清理项明细",
     "result.col.name": "清理项",

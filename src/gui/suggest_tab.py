@@ -4,6 +4,7 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from ..core.processes import busy_targets
 from ..core.targets import estimate_target_size
 from ..utils.fmt import fmt_size
 from ..utils.i18n import tr
@@ -218,6 +219,21 @@ class SuggestTab(ttk.Frame):
             return
         if blocked:
             self.app.logger.info("以下项目因缺少管理员权限被跳过：%s" % "、".join(blocked))
+
+        # 浏览器等程序正在运行时，缓存往往删不干净，先检测并明确告知
+        busy = busy_targets(selected)
+        if busy:
+            items = "\n".join("· %s（%s）" % (t["name"], "、".join(sorted(procs)))
+                              for t, procs in busy)
+            if not messagebox.askyesno(tr("suggest.msg.busy_title"),
+                                       tr("suggest.msg.busy", items=items)):
+                return
+            busy_keys = {t["key"] for t, _ in busy}
+            selected = [t for t in selected if t["key"] not in busy_keys]
+            if not selected:
+                messagebox.showinfo(tr("suggest.msg.busy_title"),
+                                    tr("suggest.msg.all_busy"))
+                return
 
         if self.app.config.confirm_before_clean:
             names = "\n".join("· %s" % t["name"] for t in selected)

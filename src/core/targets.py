@@ -17,6 +17,8 @@
     needs_admin  是否需要管理员权限
     default      默认是否勾选（安全项为 True）
     min_age      只清理该时长（秒）之前的项目
+    trash        True 表示删除时移入回收站（用户数据类）
+    busy_processes 清理前需要检测的进程名，运行中则跳过该项
     desc / note  说明与额外提示
 """
 
@@ -47,7 +49,10 @@ def _builtin_targets(config):
 
     def browser_cache(sub, vendor_path):
         base = os.path.join(L, *vendor_path)
-        return [os.path.join(base, *parts) for parts in BROWSER_CACHE_SUBDIRS]
+        # 同时覆盖默认配置与多配置文件用户（Profile 1、Profile 2…）
+        profiles = ["Default", "Profile *"]
+        return [os.path.join(base, profile, *parts)
+                for profile in profiles for parts in BROWSER_CACHE_SUBDIRS]
 
     return [
         # ---------------- 免管理员 / 免停机 / 默认勾选 ----------------
@@ -73,11 +78,13 @@ def _builtin_targets(config):
              paths=browser_cache("edge", ("Microsoft", "Edge", "User Data", "Default")),
              category="缓存临时", risk="低", needs_admin=False, default=True,
              desc="仅清理缓存子目录，不影响书签、密码、历史",
+             busy_processes=("msedge",),
              note="建议先关闭 Edge 浏览器"),
         dict(key="chrome_cache", name="Chrome 浏览器缓存",
              paths=browser_cache("chrome", ("Google", "Chrome", "User Data", "Default")),
              category="缓存临时", risk="低", needs_admin=False, default=True,
              desc="仅清理缓存子目录，不影响书签、密码、历史",
+             busy_processes=("chrome", "chromium"),
              note="建议先关闭 Chrome 浏览器"),
 
         # ---------------- 需管理员 / 默认勾选 ----------------
@@ -141,8 +148,9 @@ def _builtin_targets(config):
         dict(key="downloads", name="下载文件夹",
              paths=[os.path.join(U, "Downloads")],
              category="数据文件", risk="高", needs_admin=False, default=False,
+             trash=True,
              desc="你的下载文件，可能包含重要内容",
-             note="请自行确认后再清理"),
+             note="删除时移入回收站，可从回收站还原"),
     ]
 
 
@@ -157,7 +165,7 @@ def _custom_targets(config):
         out.append(dict(
             key="custom_%d" % i, name="自定义：%s" % base,
             paths=[p], category="其他", risk="中", needs_admin=False,
-            default=False, custom=True,
+            default=False, custom=True, trash=True,
             desc="来自 data/custom_targets.txt 的自定义清理目录"))
     return out
 

@@ -65,7 +65,11 @@ class ResultDialog(tk.Toplevel):
 
         freed = self.payload.get("freed", 0)
         deleted = self.payload.get("deleted", 0)
-        summary = tr("result.summary", freed=fmt_size(freed), deleted=deleted)
+        if self.payload.get("trashed"):
+            summary = tr("result.summary.trashed", freed=fmt_size(freed),
+                         deleted=deleted)
+        else:
+            summary = tr("result.summary", freed=fmt_size(freed), deleted=deleted)
         ttk.Label(body, text=summary, font=theme.font(10)).pack(anchor="w", pady=(4, 2))
 
         if self.payload.get("cancelled"):
