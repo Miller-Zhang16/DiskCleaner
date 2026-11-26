@@ -10,7 +10,7 @@
 
 APP_NAME = "DiskCleaner"
 APP_NAME_CN = "C 盘清理助手"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 AUTHOR = "DiskCleaner Project"
 YEAR = "2026"
 HOMEPAGE = ""
