@@ -32,8 +32,14 @@ jobs:
         run: python -m compileall -q main.py src scripts
 
       - name: 模块导入检查
+        shell: pwsh
         run: |
-          python -c "import src.core.classify, src.core.cleaner, src.core.scanner, src.core.targets, src.core.recycle, src.utils.config, src.utils.logger, src.utils.fmt, src.utils.taskrunner, src.gui.app; print('imports ok')"
+          python -c "import src.core.classify, src.core.cleaner, src.core.scanner, src.core.targets, src.core.recycle, src.utils.config, src.utils.logger, src.utils.fmt, src.utils.taskrunner, src.gui.app; print('imports ok')" 2>&1 | Tee-Object -FilePath imports.log
+          if ($LASTEXITCODE -ne 0) {
+            $msg = (Get-Content imports.log -Tail 8) -join " | "
+            Write-Host "::error title=ImportFailed::$msg"
+            exit 1
+          }
 
       - name: 单元测试
         run: python -m pytest tests/ -v
