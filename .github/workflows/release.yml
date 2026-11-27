@@ -20,9 +20,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 与本地发布包保持一致，使用 3.14 构建（内嵌解释器版本随构建解释器而定）
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.14"
 
       - name: 安装 MinGW（编译原生启动器）
         run: choco install mingw -y --no-progress
