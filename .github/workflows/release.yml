@@ -32,7 +32,14 @@ jobs:
         run: python scripts/check_version.py --tag ${{ github.ref_name }}
 
       - name: 构建便携包
-        run: python scripts/build_portable.py
+        shell: pwsh
+        run: |
+          python scripts/build_portable.py 2>&1 | Tee-Object -FilePath build.log
+          if ($LASTEXITCODE -ne 0) {
+            $msg = (Get-Content build.log -Tail 12) -join " | "
+            Write-Host "::error title=BuildFailed::$msg"
+            exit 1
+          }
 
       - name: 发布 Release
         env:

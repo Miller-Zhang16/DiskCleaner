@@ -104,7 +104,7 @@ class SoftwareItem:
 # ---------------------------------------------------------------------------
 
 
-def _open_subkey(parent_hive, subpath) -> Optional[winreg.HKEY_TYPE]:
+def _open_subkey(parent_hive, subpath) -> Optional[winreg.HKEYType]:
     try:
         return winreg.OpenKey(parent_hive, subpath, 0, winreg.KEY_READ)
     except OSError:
