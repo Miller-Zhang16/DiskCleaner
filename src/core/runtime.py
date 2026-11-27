@@ -50,6 +50,12 @@ def icon_path():
     return p if os.path.isfile(p) else None
 
 
+def logo_path():
+    """侧边栏品牌图路径（.png），不存在时返回 None。"""
+    p = os.path.join(app_root(), "assets", "logo.png")
+    return p if os.path.isfile(p) else None
+
+
 def ensure_data_dir():
     """确保数据目录存在，返回其路径。"""
     d = data_dir()

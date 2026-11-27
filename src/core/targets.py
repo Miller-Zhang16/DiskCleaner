@@ -123,7 +123,7 @@ def _builtin_targets(config):
         dict(key="recycle", name="清空回收站",
              paths=[], recycle=True,
              category="回收站", risk="中", needs_admin=False, default=False,
-             desc="清空 C 盘回收站，删除后不可恢复"),
+             desc="清空所有盘（C/D/E…）的回收站，删除后不可恢复"),
         dict(key="delivery_opt", name="传递优化缓存",
              paths=[os.path.join(W, "SoftwareDistribution", "DeliveryOptimization"),
                     os.path.join(W, "ServiceProfiles", "NetworkService", "AppData",
@@ -218,8 +218,8 @@ def estimate_target_size(target, cancel=None, budget_seconds=None, budget_entrie
     if target.get("blocked"):
         return 0, False
     if target.get("recycle"):
-        from .recycle import recycle_bin_size
-        return recycle_bin_size(), False
+        from .recycle import recycle_bin_size_all
+        return recycle_bin_size_all(), False
 
     dirs, files = resolve_target_paths(target)
     if not dirs and not files:

@@ -121,11 +121,29 @@ class CleanupApp:
         brand = tk.Frame(parent, background=theme.SIDEBAR)
         brand.pack(fill="x", padx=18, pady=(22, 6))
 
-        logo = tk.Canvas(brand, width=38, height=38, background=theme.SIDEBAR,
-                        highlightthickness=0)
+        logo = tk.Frame(brand, background=theme.SIDEBAR, width=38, height=38)
         logo.pack(side="left")
-        logo.create_oval(0, 0, 38, 38, fill=theme.PRIMARY, outline="")
-        logo.create_text(19, 19, text="C", fill="#FFFFFF", font=theme.font(15, True))
+        logo.pack_propagate(False)
+        self._brand_img = None
+        try:
+            from ..core.runtime import logo_path
+            path = logo_path()
+            if path:
+                img = tk.PhotoImage(file=path)
+                # logo.png 为 76px，缩小到 38px 与侧边栏对齐
+                self._brand_base = img
+                self._brand_img = img.subsample(2, 2)
+                tk.Label(logo, image=self._brand_img, background=theme.SIDEBAR,
+                         bd=0).pack()
+        except (tk.TclError, OSError):
+            self._brand_img = None
+        if self._brand_img is None:
+            fallback = tk.Canvas(logo, width=38, height=38,
+                                 background=theme.SIDEBAR, highlightthickness=0)
+            fallback.pack()
+            fallback.create_oval(0, 0, 38, 38, fill=theme.PRIMARY, outline="")
+            fallback.create_text(19, 19, text="D", fill="#FFFFFF",
+                                 font=theme.font(15, True))
 
         title_box = tk.Frame(brand, background=theme.SIDEBAR)
         title_box.pack(side="left", padx=(10, 0))
@@ -136,15 +154,25 @@ class CleanupApp:
                  background=theme.SIDEBAR, foreground=theme.MUTED,
                  font=theme.font(9), anchor="w").pack(fill="x")
 
+        tk.Frame(parent, background=theme.BORDER, height=1).pack(
+            fill="x", padx=18, pady=(10, 0))
         tk.Label(parent, text=tr("app.nav.section"), background=theme.SIDEBAR,
                  foreground=theme.FAINT, font=theme.font(9),
-                 anchor="w").pack(fill="x", padx=20, pady=(18, 4))
+                 anchor="w").pack(fill="x", padx=20, pady=(10, 4))
 
         self.nav_items = {}
         for key, icon in (("browse", "▤"), ("large_files", "▥"),
                           ("duplicates", "⧉"), ("suggest", "✦"),
                           ("migrate", "⇄"), ("settings", "⚙")):
             self._nav_item(parent, key, icon, tr("app.tab." + key).strip())
+
+        footer = tk.Frame(parent, background=theme.SIDEBAR)
+        footer.pack(side="bottom", fill="x", padx=18, pady=(8, 16))
+        tk.Frame(footer, background=theme.BORDER, height=1).pack(
+            fill="x", pady=(0, 9))
+        tk.Label(footer, text=tr("app.sidebar.privacy"), background=theme.SIDEBAR,
+                 foreground=theme.FAINT, font=theme.font(9),
+                 anchor="w").pack(fill="x")
 
     def _nav_item(self, parent, key, icon, text):
         item = tk.Frame(parent, background=theme.SIDEBAR, cursor="hand2")
@@ -230,6 +258,7 @@ class CleanupApp:
             stats.columnconfigure(col, weight=1)
 
         self.stat_vars = {}
+        self.stat_labels = {}
         for idx, (key, label) in enumerate((
                 ("used", tr("app.stat.used")),
                 ("free", tr("app.stat.free")),
@@ -242,30 +271,27 @@ class CleanupApp:
                      anchor="w").pack(fill="x")
             var = tk.StringVar(value="—")
             self.stat_vars[key] = var
-            tk.Label(block, textvariable=var, background=theme.CARD,
-                     foreground=theme.TEXT, font=theme.font(17, True),
-                     anchor="w").pack(fill="x", pady=(2, 0))
+            value = tk.Label(block, textvariable=var, background=theme.CARD,
+                             foreground=theme.TEXT, font=theme.font(17, True),
+                             anchor="w")
+            value.pack(fill="x", pady=(2, 0))
+            self.stat_labels[key] = value
             if idx < 3:
                 tk.Frame(stats, background=theme.BORDER, width=1).grid(
                     row=0, column=idx * 2 + 1, sticky="ns", padx=14)
+        # 数值用颜色区分语义：已用蓝、可用绿、使用率随压力变色
+        self.stat_labels["used"].configure(foreground=theme.PRIMARY)
+        self.stat_labels["free"].configure(foreground=theme.SUCCESS)
 
         self.disk_canvas = tk.Canvas(inner, height=10, background=theme.CARD,
                                      highlightthickness=0)
         self.disk_canvas.pack(fill="x", pady=(16, 0))
         self.disk_canvas.bind("<Configure>", lambda _e: self._draw_disk())
 
-        self.disk_text = tk.Label(inner, background=theme.CARD,
-                                  foreground=theme.MUTED, font=theme.font(9),
-                                  anchor="w")
-        self.disk_text.pack(fill="x", pady=(6, 0))
-
         self.growth_label = tk.Label(inner, background=theme.CARD,
                                      foreground=theme.FAINT, font=theme.font(9),
                                      anchor="w")
-        self.growth_label.pack(fill="x", pady=(2, 0))
-        tk.Label(inner, text=tr("app.log_path"), background=theme.CARD,
-                 foreground=theme.FAINT, font=theme.font(9),
-                 anchor="e").pack(fill="x", pady=(2, 0))
+        self.growth_label.pack(fill="x", pady=(8, 0))
 
         self.disk_total = self.disk_used = self.disk_free = 0
         self.refresh_disk()
@@ -298,6 +324,8 @@ class CleanupApp:
         head.pack(fill="x", padx=12, pady=(8, 0))
         tk.Label(head, text=tr("app.log_frame"), background=theme.CARD,
                  foreground=theme.TEXT, font=theme.font(10, True)).pack(side="left")
+        tk.Label(head, text=tr("app.log_path"), background=theme.CARD,
+                 foreground=theme.FAINT, font=theme.font(9)).pack(side="right")
 
         body = tk.Frame(card, background=theme.CARD)
         body.pack(fill="x", padx=12, pady=(4, 10))
@@ -340,9 +368,9 @@ class CleanupApp:
         self.stat_vars["free"].set(fmt_size(free))
         self.stat_vars["total"].set(fmt_size(total))
         self.stat_vars["percent"].set("%.0f%%" % percent)
-        self.disk_text.configure(text=tr(
-            "app.disk_usage", used=fmt_size(used), total=fmt_size(total),
-            percent="%.0f" % percent, free=fmt_size(free)))
+        self.stat_labels["percent"].configure(foreground=(
+            theme.DANGER if percent >= 90 else
+            theme.WARN if percent >= 75 else theme.PRIMARY))
         self._draw_disk()
         self._update_growth(self.growth.record(total, used))
 

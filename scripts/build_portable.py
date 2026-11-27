@@ -246,10 +246,12 @@ def copy_project():
         os.path.join(PORTABLE, "src"),
         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
     )
-    icon = os.path.join(ROOT, "assets", "icon.ico")
-    if os.path.isfile(icon):
-        os.makedirs(os.path.join(PORTABLE, "assets"), exist_ok=True)
-        shutil.copy2(icon, os.path.join(PORTABLE, "assets", "icon.ico"))
+    assets = os.path.join(PORTABLE, "assets")
+    os.makedirs(assets, exist_ok=True)
+    for name in ("icon.ico", "logo.png"):
+        src = os.path.join(ROOT, "assets", name)
+        if os.path.isfile(src):
+            shutil.copy2(src, os.path.join(assets, name))
 
 
 def find_gcc():

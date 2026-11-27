@@ -23,10 +23,13 @@
     - 复制阶段写入 ``<目标>.part``，校验通过才改名，避免半成品被误用。
 """
 
+import ctypes
 import json
 import os
+import random
 import shutil
 import subprocess
+import sys
 import time
 
 from ..utils.fmt import fmt_size, is_reparse_point, long_path, scandir_robust
@@ -62,6 +65,21 @@ _FORBIDDEN_EXACT = {
 # 目标盘剩余空间的安全余量
 _FREE_SPACE_MARGIN = 64 * 1024 * 1024
 _CHUNK = 1024 * 1024
+_MAX_TARGET_PATH = 240
+
+
+def _volume_fs(path):
+    """返回路径所在卷的文件系统名（大写），读取失败返回空串。"""
+    if sys.platform != "win32":
+        return ""
+    drive = os.path.splitdrive(os.path.abspath(path))[0] + "\\"
+    try:
+        buf = ctypes.create_unicode_buffer(32)
+        ok = ctypes.windll.kernel32.GetVolumeInformationW(
+            drive, None, 0, None, None, None, buf, 32)
+        return buf.value.upper() if ok else ""
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _norm(path):
@@ -149,6 +167,17 @@ def validate(src, dst, size=None):
         problems.append("目标目录的上级目录不存在：%s" % parent)
     if is_protected(dst_abs):
         problems.append("目标目录位于系统关键目录内，禁止迁移到此处：%s" % dst_abs)
+    if len(dst_abs) > _MAX_TARGET_PATH:
+        problems.append("目标路径过长（%d 字符），建议控制在 %d 字符以内，"
+                        "避免部分程序无法访问链接。"
+                        % (len(dst_abs), _MAX_TARGET_PATH))
+
+    dst_fs = _volume_fs(dst_abs)
+    if dst_fs and dst_fs != "NTFS":
+        problems.append("目标盘文件系统为 %s，目录链接需要 NTFS。" % dst_fs)
+    src_fs = _volume_fs(src_abs)
+    if src_fs and src_fs != "NTFS":
+        problems.append("源目录所在盘文件系统为 %s，无法创建目录链接。" % src_fs)
 
     if size is not None and size > 0:
         try:
@@ -156,10 +185,11 @@ def validate(src, dst, size=None):
         except OSError as e:
             problems.append("无法读取目标盘剩余空间：%s" % e)
         else:
-            if free < size + _FREE_SPACE_MARGIN:
+            # 预留 20% 余量，避免复制过程中目标盘写满
+            need = size * 12 // 10 + _FREE_SPACE_MARGIN
+            if free < need:
                 problems.append("目标盘剩余空间不足：需要 %s，可用 %s"
-                                % (fmt_size(size + _FREE_SPACE_MARGIN),
-                                   fmt_size(free)))
+                                % (fmt_size(need), fmt_size(free)))
 
     return problems
 
@@ -351,6 +381,104 @@ def verify_copy(src, dst):
     return problems
 
 
+def probe_locked(src, cancel=None, max_files=2000, max_seconds=1.5):
+    """抽样打开源目录中的文件，返回被独占占用（winerror 32）的项。
+
+    受时间/文件数预算限制，只用于迁移前给出「请先关闭程序」的提示，
+    不作为完整性校验。
+    """
+    locked = []
+    started = time.time()
+    checked = 0
+    stack = [src]
+    while stack and checked < max_files and time.time() - started < max_seconds:
+        if cancel is not None and cancel.is_set():
+            break
+        directory = stack.pop()
+        try:
+            it = scandir_robust(directory)
+        except OSError:
+            continue
+        with it:
+            for entry in it:
+                if checked >= max_files or time.time() - started >= max_seconds:
+                    break
+                if cancel is not None and cancel.is_set():
+                    break
+                try:
+                    st = entry.stat(follow_symlinks=False)
+                except OSError:
+                    continue
+                if is_reparse_point(st):
+                    continue
+                try:
+                    is_dir = entry.is_dir(follow_symlinks=False)
+                except OSError:
+                    is_dir = False
+                if is_dir:
+                    stack.append(entry.path)
+                    continue
+                checked += 1
+                try:
+                    with open(long_path(entry.path), "rb") as f:
+                        f.read(1)
+                except OSError as e:
+                    if getattr(e, "winerror", None) == 32:
+                        locked.append((entry.path, str(e)))
+    return locked
+
+
+def spot_check(src, dst, sample=20):
+    """随机抽样比对大小与修改时间，作为复制后的二次确认。"""
+    picked = []
+    seen = 0
+    stack = [src]
+    while stack:
+        directory = stack.pop()
+        try:
+            it = scandir_robust(directory)
+        except OSError:
+            continue
+        with it:
+            for entry in it:
+                try:
+                    st = entry.stat(follow_symlinks=False)
+                except OSError:
+                    continue
+                if is_reparse_point(st):
+                    continue
+                try:
+                    is_dir = entry.is_dir(follow_symlinks=False)
+                except OSError:
+                    is_dir = False
+                if is_dir:
+                    stack.append(entry.path)
+                    continue
+                seen += 1
+                if len(picked) < sample:
+                    picked.append(entry.path)
+                else:
+                    j = random.randrange(seen)
+                    if j < sample:
+                        picked[j] = entry.path
+
+    problems = []
+    for path in picked:
+        rel = os.path.relpath(path, src)
+        target = os.path.join(dst, rel)
+        try:
+            s_st = os.stat(long_path(path))
+            d_st = os.stat(long_path(target))
+        except OSError:
+            problems.append("抽样文件无法读取：%s" % path)
+            continue
+        if s_st.st_size != d_st.st_size:
+            problems.append("抽样体积不一致：%s" % path)
+        elif abs(s_st.st_mtime - d_st.st_mtime) > 2:
+            problems.append("抽样修改时间不一致：%s" % path)
+    return problems
+
+
 # ---------------------------------------------------------------------------
 # 删除源 / 目录链接
 # ---------------------------------------------------------------------------
@@ -522,6 +650,8 @@ def _do_copy(record, cancel, on_progress, log, store):
         return False, "复制失败（共 %d 项）：%s → %s" % (
             len(failures), first[0], first[1])
     problems = verify_copy(src, part)
+    if not problems:
+        problems = spot_check(src, part)
     if problems:
         return False, "复制校验未通过：%s" % problems[0]
 
@@ -648,3 +778,92 @@ def _remove_copied(dst):
     if not _wipe(dst):
         return False, "无法删除目标副本：%s" % dst
     return True, "已删除目标副本"
+
+
+def _clear_src_for_restore(src):
+    """回滚前移除原路径上的链接或空目录。"""
+    try:
+        st = os.lstat(src)
+    except OSError:
+        return True, None
+    if is_reparse_point(st):
+        return remove_junction(src)
+    if os.path.isdir(src):
+        try:
+            if not os.listdir(src):
+                os.rmdir(src)
+                return True, None
+        except OSError as e:
+            return False, str(e)
+        return False, "源目录仍存在且不为空，已中止回滚：%s" % src
+    return False, "源路径被文件占用，已中止回滚：%s" % src
+
+
+def rollback(record, cancel=None, on_progress=None, log=None, store=None):
+    """完整回滚：把目标目录复制回原路径，删除链接与目标副本。
+
+    适用于 ``source_deleted`` / ``linked`` 阶段。数据在校验通过前不会删除
+    目标副本，也不会提前移除原路径链接。
+    """
+    src = record["src"]
+    dst = record["dst"]
+    stage = record.get("stage", STAGE_PLANNED)
+    if stage == STAGE_PLANNED:
+        return False, "尚未开始复制，无需回滚。"
+    if not os.path.isdir(dst):
+        return False, "目标目录不存在，无法回滚：%s" % dst
+
+    total = record.get("size") or 0
+    need = total * 12 // 10 + _FREE_SPACE_MARGIN
+    try:
+        free = shutil.disk_usage(os.path.dirname(src) or src).free
+    except OSError:
+        free = None
+    if total and free is not None and free < need:
+        return False, "C 盘空间不足：需要 %s，可用 %s" % (
+            fmt_size(need), fmt_size(free))
+
+    temp = src + ".rollback"
+    if os.path.exists(temp) and not _wipe(temp):
+        return False, "无法清理上次的回滚临时目录：%s" % temp
+    if log:
+        log("开始回滚：%s → %s" % (dst, src))
+
+    ok, copied, files, failures, cancelled = copy_tree(
+        dst, temp, total or None, cancel, on_progress)
+    if cancelled:
+        _wipe(temp)
+        return False, "回滚已取消，源目录保持原样。"
+    if failures:
+        first = failures[0]
+        _wipe(temp)
+        return False, "回滚复制失败（共 %d 项）：%s → %s" % (
+            len(failures), first[0], first[1])
+    problems = verify_copy(dst, temp)
+    if not problems:
+        problems = spot_check(dst, temp)
+    if problems:
+        _wipe(temp)
+        return False, "回滚校验未通过：%s" % problems[0]
+
+    if os.path.lexists(src):
+        ok, msg = _clear_src_for_restore(src)
+        if not ok:
+            _wipe(temp)
+            return False, msg
+    try:
+        os.rename(temp, src)
+    except OSError as e:
+        # 数据仍在目标盘；尽量恢复链接，避免程序路径失效
+        if stage == STAGE_LINKED:
+            create_junction(src, dst)
+        return False, "无法把回滚副本移动到原路径：%s" % e
+
+    ok, msg = _remove_copied(dst)
+    if not ok:
+        return False, "数据已恢复到原路径，但目标副本删除失败：%s" % msg
+    if store is not None:
+        store.remove(src)
+    if log:
+        log("回滚完成：%d 个文件，%s" % (files, fmt_size(copied)))
+    return True, "已回滚：数据已恢复到原路径，目标副本已删除"

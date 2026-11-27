@@ -24,9 +24,12 @@ from ..core.migrator import (
     STAGE_SOURCE_DELETED,
     estimate,
     migrate,
+    probe_locked,
+    rollback,
     undo,
     validate,
 )
+from ..core.processes import executables_under, running_executables
 from ..core.software import (
     RISK_FORBID,
     RISK_SAFE,
@@ -321,6 +324,16 @@ class MigrateTab(ttk.Frame):
                                    count=len(errors), example=errors[0][0]))
             if size <= 0 and not problems:
                 problems.append(tr("migrate.problem.empty"))
+            # 预检：源目录内是否有程序正在运行、文件是否被占用
+            busy = executables_under(s)
+            if busy:
+                problems.append(tr("migrate.problem.busy",
+                                   name=os.path.basename(busy[0])))
+            locked = probe_locked(s, ev)
+            if locked:
+                problems.append(tr("migrate.problem.locked",
+                                   count=len(locked),
+                                   example=os.path.basename(locked[0][0])))
             self.runner.emit("migrate", gen, "checked", {
                 "src": s, "dst": d, "size": size, "files": files,
                 "entries": entries, "problems": problems})
@@ -359,6 +372,12 @@ class MigrateTab(ttk.Frame):
             return
         src = self.src_var.get().strip().strip('"')
         dst = self.dst_var.get().strip().strip('"')
+        busy = executables_under(src)
+        if busy:
+            messagebox.showwarning(
+                tr("migrate.msg.busy_proc_title"),
+                tr("migrate.problem.busy", name=os.path.basename(busy[0])))
+            return
         if not messagebox.askyesno(
                 tr("migrate.msg.confirm_title"),
                 tr("migrate.msg.confirm", src=src, dst=dst,
@@ -549,24 +568,44 @@ class MigrateTab(ttk.Frame):
             messagebox.showinfo(tr("migrate.msg.pick_title"), tr("migrate.msg.pick"))
             return
         stage = rec.get("stage", STAGE_PLANNED)
-        if stage not in (STAGE_PLANNED, STAGE_COPIED):
-            messagebox.showwarning(tr("migrate.msg.undo_refuse_title"),
-                                   tr("migrate.msg.undo_refuse"))
-            return
-        if not messagebox.askyesno(
-                tr("migrate.msg.undo_confirm_title"),
-                tr("migrate.msg.undo_confirm", dst=rec.get("dst"))):
+        is_rollback = stage in (STAGE_SOURCE_DELETED, STAGE_LINKED)
+        if is_rollback:
+            title = tr("migrate.msg.rollback_confirm_title")
+            body = tr("migrate.msg.rollback_confirm", src=rec.get("src"),
+                      dst=rec.get("dst"), size=fmt_size(rec.get("size", 0)))
+        else:
+            title = tr("migrate.msg.undo_confirm_title")
+            body = tr("migrate.msg.undo_confirm", dst=rec.get("dst"))
+        if not messagebox.askyesno(title, body):
             return
         self.busy = True
         self._set_running(True)
+        self.progress.configure(value=0)
+        self.progress_var.set("")
         self.runner.reset("migrate")
 
-        def job(gen, ev, r=dict(rec)):
-            ok, msg = undo(r, cancel=ev, log=lambda m: self.runner.emit(
-                "migrate", gen, "log", m), store=self.app.migrations)
+        def job(gen, ev, r=dict(rec), rb=is_rollback):
+            def on_progress(copied, total, name):
+                pct = int(copied * 100 / total) if total else 0
+                self.runner.emit("migrate", gen, "progress",
+                                 {"percent": pct, "text": name})
+
+            if rb:
+                ok, msg = rollback(
+                    r, cancel=ev, on_progress=on_progress,
+                    log=lambda m: self.runner.emit("migrate", gen, "log", m),
+                    store=self.app.migrations)
+                title = tr("migrate.rollback_title",
+                           name=os.path.basename(r["src"].rstrip("\\/")))
+            else:
+                ok, msg = undo(
+                    r, cancel=ev,
+                    log=lambda m: self.runner.emit("migrate", gen, "log", m),
+                    store=self.app.migrations)
+                title = tr("migrate.undo_title")
             self.runner.emit("migrate", gen, "done", {
                 "record": r, "ok": ok, "message": msg,
-                "title": tr("migrate.undo_title"), "undo": True})
+                "title": title, "undo": True})
 
         self.runner.submit("migrate", job, priority=PRIORITY_BATCH, lane=LANE_BATCH)
 
@@ -878,6 +917,14 @@ class MigrateTab(ttk.Frame):
         checked = [it for it in self.software_items if it.checked]
         if not checked:
             messagebox.showinfo(tr("sw.msg.none_title"), tr("sw.msg.none"))
+            return
+        # 运行中的软件文件会被占用，复制必然失败，提交前直接拦截
+        exes = running_executables()
+        busy = [it for it in checked if executables_under(it.install_dir_norm, exes)]
+        if busy:
+            names = "\n".join("· %s" % it.name for it in busy[:10])
+            messagebox.showwarning(tr("sw.msg.busy_title"),
+                                   tr("sw.msg.busy", items=names))
             return
         root = self._target_root()
         if not root:

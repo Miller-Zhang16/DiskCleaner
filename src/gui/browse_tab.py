@@ -19,6 +19,12 @@ from ..utils.i18n import tr
 from ..utils.taskrunner import LANE_FAST, LANE_SCAN, PRIORITY_LIST, PRIORITY_SCAN
 from . import theme
 
+# 展开目录时自动计算大小的上限与单目录预算：太小会让用户等太久，
+# 太大则大量目录长期停在「计算中」。未进入自动队列的显示「未计算」，
+# 用户单击大小列时再按配置预算完整计算。
+_AUTO_SIZE_MAX = 8
+_AUTO_SIZE_BUDGET = 1.5
+
 
 class BrowseTab(ttk.Frame):
     """磁盘浏览页。"""
@@ -36,12 +42,22 @@ class BrowseTab(ttk.Frame):
         self._size_done = 0    # 已完成数
 
         self._build()
+        self._init_drives()
 
     # ---------------- 构建界面 ----------------
 
     def _build(self):
-        hint = ttk.Label(self, style="Muted.TLabel", text=tr("browse.hint"))
-        hint.pack(fill="x", pady=(0, 8), anchor="w")
+        top = ttk.Frame(self)
+        top.pack(fill="x", pady=(0, 6))
+        ttk.Label(top, text=tr("browse.drive")).pack(side="left")
+        self.drive_var = tk.StringVar(value="C:")
+        self.drive_box = ttk.Combobox(top, textvariable=self.drive_var,
+                                      width=8, state="readonly")
+        self.drive_box.pack(side="left", padx=(6, 10))
+        self.drive_box.bind("<<ComboboxSelected>>", lambda _e: self._change_drive())
+
+        hint = ttk.Label(top, style="Muted.TLabel", text=tr("browse.hint"))
+        hint.pack(side="left", fill="x", expand=True, anchor="w")
         theme.autowrap(hint)
 
         wrap = tk.Frame(self, background=theme.CARD,
@@ -84,16 +100,46 @@ class BrowseTab(ttk.Frame):
         self.menu.add_command(label=tr("browse.menu.delete"), command=self._delete_selected)
         self.menu.add_command(label=tr("common.copy_path"), command=self._copy_path)
 
-    # ---------------- 载入根节点 ----------------
+    # ---------------- 盘符与根节点 ----------------
+
+    def _init_drives(self):
+        """探测本机盘符，供用户切换浏览/清理目标。"""
+        drives = []
+        for letter in "CDEFGHIJKLMNOPQRSTUVWXYZ":
+            if os.path.isdir(letter + ":\\"):
+                drives.append(letter + ":")
+        self.drives = drives
+        self.drive_box.configure(values=drives)
+        if "C:" not in drives and drives:
+            self.drive_var.set(drives[0])
+        self._root_path = (self.drive_var.get() or "C:") + "\\"
+
+    def _change_drive(self):
+        drive = (self.drive_var.get() or "").strip()
+        if not drive:
+            return
+        self._root_path = drive + "\\"
+        # 取消上一块盘还在排队/执行的大小计算，避免新盘长期等待
+        self.runner.reset("browse")
+        self.app.end_progress()
+        self._size_total = 0
+        self._size_done = 0
+        self.node_kind.clear()
+        self.node_state.clear()
+        for iid in self.tree.get_children(""):
+            self.tree.delete(iid)
+        self.load_root()
 
     def load_root(self):
-        """插入 C:\\ 根节点并异步读取其子项。"""
+        """插入当前盘符的根节点并异步读取其子项。"""
         root_path = self._root_path
         if self.tree.exists(root_path):
             return
+        category = classify(root_path)
         self.tree.insert("", "end", iid=root_path, text=root_path,
-                         values=(tr("browse.calculating"), tr("browse.type.dir"), "系统文件"),
-                         tags=("cat_系统文件",), open=False)
+                         values=(tr("browse.not_calculated"),
+                                 tr("browse.type.dir"), category),
+                         tags=("cat_" + category,), open=False)
         self.node_kind[root_path] = "dir"
         self.node_state[root_path] = "loading"
         self._insert_placeholder(root_path)
@@ -110,9 +156,11 @@ class BrowseTab(ttk.Frame):
         dirs, files = list_dir_children(parent_iid)
         self.runner.emit("browse", gen, "children", (parent_iid, dirs, files))
 
-    def _submit_size(self, path):
-        def job(gen, ev, p=path):
+    def _submit_size(self, path, auto=False):
+        def job(gen, ev, p=path, quick=auto):
             budget_s = self.app.config.scan_budget_seconds
+            if quick:
+                budget_s = min(budget_s, _AUTO_SIZE_BUDGET)
             budget_e = self.app.config.scan_budget_entries
             b, trunc, _ = scan_dir_size(p, budget_seconds=budget_s,
                                         budget_entries=budget_e, cancel=ev)
@@ -133,12 +181,20 @@ class BrowseTab(ttk.Frame):
         parent_iid, dirs, files = payload
         self._remove_placeholder(parent_iid)
         self.node_state[parent_iid] = "loaded"
-        limit = self.app.config.auto_size_limit
+        # 父节点本身不再显示「计算中」，需要时单击大小列单独计算
+        if self.tree.exists(parent_iid):
+            values = list(self.tree.item(parent_iid, "values"))
+            if values and values[0] == tr("browse.calculating"):
+                values[0] = tr("browse.not_calculated")
+                self.tree.item(parent_iid, values=values)
+        limit = min(self.app.config.auto_size_limit, _AUTO_SIZE_MAX)
         queued = 0
         for name, full, _size, link in dirs:
-            self._insert_entry(parent_iid, name, full, "dir", None, link)
-            if not link and queued < limit:
-                self._submit_size(full)
+            pending = (not link) and queued < limit
+            self._insert_entry(parent_iid, name, full, "dir", None, link,
+                               pending=pending)
+            if pending:
+                self._submit_size(full, auto=True)
                 queued += 1
         for name, full, size, link in files:
             self._insert_entry(parent_iid, name, full, "file", size, link)
@@ -153,11 +209,12 @@ class BrowseTab(ttk.Frame):
 
     def _on_size(self, payload):
         iid, size, trunc = payload
-        self._size_done += 1
-        if self._size_done >= self._size_total:
-            self.app.end_progress()
-        else:
-            self.app.update_progress(self._size_done, self._size_total)
+        if self._size_total > 0:
+            self._size_done += 1
+            if self._size_done >= self._size_total:
+                self.app.end_progress()
+            else:
+                self.app.update_progress(self._size_done, self._size_total)
         if not self.tree.exists(iid):
             return
         values = list(self.tree.item(iid, "values"))
@@ -180,7 +237,7 @@ class BrowseTab(ttk.Frame):
             if child.startswith("__placeholder_"):
                 self.tree.delete(child)
 
-    def _insert_entry(self, parent_iid, name, full, kind, size, link):
+    def _insert_entry(self, parent_iid, name, full, kind, size, link, pending=False):
         if link:
             # 重解析点：只展示，不深入、不算大小、不可展开
             size_str = fmt_size(size) if size is not None else "—"
@@ -192,8 +249,9 @@ class BrowseTab(ttk.Frame):
 
         category = classify(full)
         if kind == "dir":
+            shown = tr("browse.calculating") if pending else tr("browse.not_calculated")
             self.tree.insert(parent_iid, "end", iid=full, text=name,
-                             values=(tr("browse.calculating"), tr("browse.type.dir"), category),
+                             values=(shown, tr("browse.type.dir"), category),
                              tags=("cat_" + category,))
             self.node_kind[full] = "dir"
             self.node_state[full] = "new"

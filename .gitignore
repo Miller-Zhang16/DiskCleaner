@@ -15,8 +15,11 @@ build/
 dist/
 *.spec
 
-# ---- 运行数据（配置模板与自定义目录模板保留，日志忽略）----
+# ---- 运行数据（配置模板与自定义目录模板保留，运行时产物忽略）----
 data/logs/
+data/growth.json
+data/history.jsonl
+data/migrations.json
 
 # ---- 编辑器 / 系统 ----
 .idea/

@@ -18,7 +18,7 @@ import time
 
 from ..utils.fmt import fmt_size, is_reparse_point, scandir_robust
 from .processes import running_processes
-from .recycle import empty_recycle_bin, recycle_bin_size
+from .recycle import empty_recycle_bin_all
 from .runtime import app_root
 from .scanner import scan_dir_size
 from .targets import resolve_target_paths
@@ -286,12 +286,11 @@ def execute_target(target, cancel=None, log=None, skip_paths=None,
             return 0, 0, [], "%s 正在运行，已跳过该项" % "、".join(sorted(running))
 
     if target.get("recycle"):
-        before = recycle_bin_size()
-        ok, msg = empty_recycle_bin()
+        ok, freed, msg = empty_recycle_bin_all()
         if log:
             log("[%s] %s" % (name, msg))
         if ok:
-            return (before or 0), 1, [], None
+            return freed, 1, [], None
         return 0, 0, [], msg
 
     dirs, files = resolve_target_paths(target)

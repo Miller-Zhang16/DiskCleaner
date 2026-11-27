@@ -15,6 +15,7 @@ MESSAGES = {
     "app.title": "DiskCleaner v{version}",
     "app.brand": "DiskCleaner",
     "app.brand_sub": "Version {version}",
+    "app.sidebar.privacy": "Runs locally · Nothing uploaded",
     "app.nav.section": "Navigation",
     "app.mode.admin": "Administrator",
     "app.mode.normal": "Standard mode",
@@ -40,7 +41,6 @@ MESSAGES = {
     "app.log_frame": "Runtime Log",
     "app.log_path": "Log: data/logs/diskcleaner.log",
     "app.status.ready": "Ready",
-    "app.disk_usage": "Used {used} / {total}  ({percent}%)    Free {free}",
     "app.msg.busy_title": "Please wait",
     "app.msg.busy": "Another cleanup task is already running.",
     "app.msg.blocked_title": "Blocked",
@@ -62,9 +62,11 @@ MESSAGES = {
     "app.msg.elevate_failed": "Could not restart as administrator: {code}",
 
     # Disk browser tab
-    "browse.hint": "Expand directories to inspect usage; sizes are computed on demand "
-                   "(values marked ‘≥’ are lower bounds due to scan budgets). "
+    "browse.hint": "Switch drives above; expand directories to inspect usage. Sizes are computed "
+                   "on demand (values marked ‘≥’ are lower bounds due to scan budgets). "
                    "Right-click to open location / compute size / delete.",
+    "browse.drive": "Drive:",
+    "browse.not_calculated": "Not calculated",
     "browse.col.name": "Name",
     "browse.col.size": "Size",
     "browse.col.type": "Type",
@@ -216,7 +218,7 @@ MESSAGES = {
     "migrate.col.size": "Size",
     "migrate.col.updated": "Updated",
     "migrate.btn.resume": "Resume / Retry",
-    "migrate.btn.undo": "Undo Migration",
+    "migrate.btn.undo": "Undo / Roll back",
     "migrate.btn.open_target": "Open Target",
     "migrate.btn.remove": "Remove Record",
     "migrate.group.records": "Migration Records",
@@ -270,6 +272,12 @@ MESSAGES = {
                                "target contents back manually.",
     "migrate.msg.undo_confirm_title": "Undo migration",
     "migrate.msg.undo_confirm": "The target copy will be deleted:\n{dst}\n\nThe source stays untouched. Continue?",
+    "migrate.msg.rollback_confirm_title": "Full rollback",
+    "migrate.msg.rollback_confirm": "Data will be copied from the target drive back to C: and the "
+                                     "junction removed:\nSource: {src}\nTarget: {dst}\n\n"
+                                     "At least {size} free space is required on C: (20% margin included). Continue?",
+    "migrate.rollback_title": "Rolling back {name}",
+    "migrate.msg.busy_proc_title": "Programs are running",
     "migrate.undo_title": "Undo migration",
     "migrate.msg.open_missing_title": "Target missing",
     "migrate.msg.open_missing": "Target directory does not exist: {path}",
@@ -287,6 +295,8 @@ MESSAGES = {
                             "(e.g. {example}).",
     "migrate.problem.errors": "{count} entr(ies) could not be read (e.g. {example}).",
     "migrate.problem.empty": "The source directory is empty; nothing to migrate.",
+    "migrate.problem.busy": "A program under the source is running: {name}. Close it before migrating.",
+    "migrate.problem.locked": "{count} file(s) are in use (e.g. {example}). Close the related programs and retry.",
 
     # Result dialog
     "result.title": "Cleanup Result",
@@ -389,6 +399,8 @@ MESSAGES = {
     "sw.msg.problem_partial_title": "Some items failed validation",
     "sw.msg.problem_partial": "The following items will be skipped:",
     "sw.msg.confirm_partial": "Continue with the remaining {count} items?",
+    "sw.msg.busy_title": "Software is running",
+    "sw.msg.busy": "These programs are running and their files are locked. Close them first:\n{items}",
     "sw.msg.batch_confirm_title": "Confirm batch migration",
     "sw.msg.batch_confirm": "About to move {count} software packages to {drive}, "
                            "total size about {size}.\n\n"

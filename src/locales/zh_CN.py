@@ -15,6 +15,7 @@ MESSAGES = {
     "app.title": "C 盘清理助手 v{version}",
     "app.brand": "磁盘清理助手",
     "app.brand_sub": "版本 v{version}",
+    "app.sidebar.privacy": "本地运行 · 不上传任何数据",
     "app.nav.section": "功能导航",
     "app.mode.admin": "管理员模式",
     "app.mode.normal": "普通模式",
@@ -40,7 +41,6 @@ MESSAGES = {
     "app.log_frame": "运行日志",
     "app.log_path": "日志：data/logs/diskcleaner.log",
     "app.status.ready": "就绪",
-    "app.disk_usage": "已用 {used} / {total}  （{percent}%）    可用 {free}",
     "app.msg.busy_title": "请稍候",
     "app.msg.busy": "已有清理任务正在执行。",
     "app.msg.blocked_title": "已阻止",
@@ -60,8 +60,10 @@ MESSAGES = {
     "app.msg.elevate_failed": "无法以管理员身份启动：{code}",
 
     # 磁盘浏览页
-    "browse.hint": "展开目录逐级查看占用；目录大小按需计算（受扫描预算限制，显示“≥”表示估算下界）。"
-                   "右键可打开位置 / 计算大小 / 删除所选。",
+    "browse.hint": "可在上方切换盘符；展开目录逐级查看占用，目录大小按需计算"
+                   "（受扫描预算限制，显示“≥”表示估算下界）。右键可打开位置 / 计算大小 / 删除所选。",
+    "browse.drive": "磁盘：",
+    "browse.not_calculated": "未计算",
     "browse.col.name": "名称",
     "browse.col.size": "大小",
     "browse.col.type": "类型",
@@ -207,7 +209,7 @@ MESSAGES = {
     "migrate.col.size": "体积",
     "migrate.col.updated": "更新时间",
     "migrate.btn.resume": "继续 / 重试",
-    "migrate.btn.undo": "撤销迁移",
+    "migrate.btn.undo": "撤销 / 回滚",
     "migrate.btn.open_target": "打开目标位置",
     "migrate.btn.remove": "从列表移除",
     "migrate.group.records": "迁移记录",
@@ -259,6 +261,11 @@ MESSAGES = {
                                "请使用「继续 / 重试」完成迁移，或手动把目标目录内容复制回原路径。",
     "migrate.msg.undo_confirm_title": "撤销迁移",
     "migrate.msg.undo_confirm": "将删除目标目录中的副本：\n{dst}\n\n源目录保持不变，确定吗？",
+    "migrate.msg.rollback_confirm_title": "完整回滚",
+    "migrate.msg.rollback_confirm": "将从目标盘把数据复制回 C 盘并删除目录链接：\n源：{src}\n目标：{dst}\n\n"
+                                     "需要 C 盘至少 {size} 可用空间（含 20% 余量）。确定继续吗？",
+    "migrate.rollback_title": "回滚 {name}",
+    "migrate.msg.busy_proc_title": "程序正在运行",
     "migrate.undo_title": "撤销迁移",
     "migrate.msg.open_missing_title": "目标不存在",
     "migrate.msg.open_missing": "目标目录不存在：{path}",
@@ -275,6 +282,8 @@ MESSAGES = {
     "migrate.problem.links": "源目录包含 {count} 个目录链接，迁移会中止（例如：{example}）",
     "migrate.problem.errors": "有 {count} 个条目无法读取（例如：{example}）",
     "migrate.problem.empty": "源目录为空，无需迁移。",
+    "migrate.problem.busy": "检测到源目录内有程序正在运行：{name}，请先关闭后再迁移。",
+    "migrate.problem.locked": "检测到 {count} 个文件被占用（例如 {example}），请关闭相关程序后重试。",
 
     # 清理结果对话框
     "result.title": "清理结果",
@@ -375,6 +384,8 @@ MESSAGES = {
     "sw.msg.problem_partial_title": "部分校验未通过",
     "sw.msg.problem_partial": "以下软件校验未通过，将被跳过：",
     "sw.msg.confirm_partial": "确定继续迁移剩余的 {count} 项吗？",
+    "sw.msg.busy_title": "软件正在运行",
+    "sw.msg.busy": "以下软件正在运行，文件会被占用，请先关闭后再迁移：\n{items}",
     "sw.msg.batch_confirm_title": "确认批量迁移",
     "sw.msg.batch_confirm": "即将把以下 {count} 个软件迁移到 {drive}，"
                            "总体积约 {size}。\n\n"

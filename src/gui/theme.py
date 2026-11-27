@@ -188,6 +188,7 @@ def apply(root):
     style.map("TNotebook.Tab",
               background=[("selected", CARD), ("active", NEUTRAL_BG)],
               foreground=[("selected", PRIMARY), ("active", TEXT)],
+              font=[("selected", font(10, True))],
               lightcolor=[("selected", CARD)],
               darkcolor=[("selected", CARD)])
 

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" width="72" alt="DiskCleaner logo">
+</p>
+
 # DiskCleaner
 
 > A Windows C: drive cleanup assistant — visualize disk usage, safely clean temporary files, classify files, and apply cleanup suggestions with one click. Download, double-click, run. No Python installation required.
