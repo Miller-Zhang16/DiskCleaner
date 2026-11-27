@@ -1,5 +1,10 @@
 name: Release
 
+# Windows runner 默认按 cp1252 输出，脚本中的中文提示会触发 UnicodeEncodeError
+env:
+  PYTHONUTF8: "1"
+  PYTHONIOENCODING: "utf-8"
+
 on:
   push:
     tags: ["v*"]
