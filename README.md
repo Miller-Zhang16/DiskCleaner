@@ -116,9 +116,10 @@ C_improve/
 ├── LICENSE
 ├── .gitignore
 ├── assets/
-│   └── icon.ico                # App icon (window + exe resource)
+│   ├── icon.ico                # App icon (window + exe resource)
+│   └── logo.png                # Brand mark (sidebar + README)
 ├── release/
-│   └── DiskCleaner-v1.2.0-win64.zip   # Ready-to-run package for reviewers
+│   └── DiskCleaner-v1.3.0-win64.zip   # Ready-to-run package for reviewers
 ├── launcher/                   # Native C launcher source
 │   ├── launcher.c              # Spawns python-embed\pythonw.exe
 │   └── launcher.rc             # Icon and version info resource
@@ -573,9 +574,10 @@ C_improve/
 ├── LICENSE
 ├── .gitignore
 ├── assets/
-│   └── icon.ico                # 应用图标（窗口 + exe 资源）
+│   ├── icon.ico                # 应用图标（窗口 + exe 资源）
+│   └── logo.png                # 品牌标识（侧边栏 + README）
 ├── release/
-│   └── DiskCleaner-v1.2.0-win64.zip   # 可直接分发的便携包
+│   └── DiskCleaner-v1.3.0-win64.zip   # 可直接分发的便携包
 ├── launcher/                   # 原生 C 启动器源码
 │   ├── launcher.c              # 拉起 python-embed\pythonw.exe
 │   └── launcher.rc             # 图标与版本信息资源

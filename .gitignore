@@ -21,6 +21,11 @@ data/growth.json
 data/history.jsonl
 data/migrations.json
 
+# ---- 测试 / 缓存 ----
+.pytest_cache/
+.ruff_cache/
+.screenshots/
+
 # ---- 编辑器 / 系统 ----
 .idea/
 .vscode/
